@@ -65,7 +65,7 @@ nav button b{font-size:19px;line-height:1}
 nav button.on{color:var(--gold)}
 
 main{padding:12px;max-width:1300px;margin:0 auto}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:8px;margin-bottom:12px}
 .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
 .stat small{display:block;color:var(--muted);font-size:11px}
 .stat b{font-size:20px;font-variant-numeric:tabular-nums}
@@ -82,8 +82,8 @@ main{padding:12px;max-width:1300px;margin:0 auto}
 .card .sub{font-size:11px;color:var(--muted)}
 .card .row{font-size:12.5px;margin-top:3px;line-height:1.35;word-break:break-all}
 .lbl{display:inline-block;font-size:10px;font-weight:700;padding:0 5px;border-radius:5px;margin-right:4px;vertical-align:1px}
-.l-hon{background:var(--gold);color:#000}
-.l-jon{background:var(--pink);color:#000}
+.l-hon{background:var(--red);color:#fff}
+.l-jon{background:var(--blue);color:#fff}
 .l-seat{background:var(--violet);color:#000}
 .empty-txt{color:#555;font-size:22px;font-weight:700;margin-top:22px;text-align:center}
 .st-empty{opacity:.75}
@@ -132,6 +132,14 @@ main{padding:12px;max-width:1300px;margin:0 auto}
 .mt.sub.st-warn{border-color:var(--amber)}
 .mt.sub.st-over{border-color:var(--red)}
 .mt.sub.st-check{border-color:var(--blue)}
+/* 卓の枠：指名卓＝赤（場内が出ても指名卓）／フリー卓で場内あり＝青／フリー＝白 */
+:is(.card,.mt,.mt.sub).k-hon{border:3px solid var(--red)}
+:is(.card,.mt,.mt.sub).k-jon{border:3px solid var(--blue)}
+:is(.card,.mt,.mt.sub).k-free{border:3px solid #fff}
+/* キャスト名：本指名＝赤／場内指名＝青／フリーで着席＝白 */
+.c-hon{color:var(--red);font-weight:700}
+.c-jon{color:#5ea2ff;font-weight:700}
+.c-free{color:#fff}
 .ei.sub{border-radius:50%}
 .rail-top{display:none}
 #rotate{display:none}
@@ -182,11 +190,14 @@ main{padding:12px;max-width:1300px;margin:0 auto}
 .btn.green{background:var(--green);border-color:var(--green);color:#000}
 .btn.wide{width:100%;padding:14px;font-size:16px}
 .btn.sm{padding:6px 10px;font-size:12px;border-radius:8px}
+.btn:disabled{opacity:.35;pointer-events:none}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:6px 6px 6px 12px;font-weight:700;font-size:14px}
-.chip.hon{background:rgba(217,181,74,.18);color:var(--gold);border:1px solid var(--gold)}
-.chip.jon{background:rgba(255,111,174,.15);color:var(--pink);border:1px solid var(--pink)}
-.chip.seat{background:rgba(169,139,255,.15);color:var(--violet);border:1px solid var(--violet)}
+.chip.hon{background:rgba(255,77,94,.15);color:var(--red);border:1px solid var(--red)}
+.chip.jon{background:rgba(61,139,253,.15);color:#5ea2ff;border:1px solid var(--blue)}
+.chip.seat{background:rgba(255,255,255,.08);color:#fff;border:1px solid #fff}
+.chip.seat.c-hon{background:rgba(255,77,94,.15);color:var(--red);border-color:var(--red)}
+.chip.seat.c-jon{background:rgba(61,139,253,.15);color:#5ea2ff;border-color:var(--blue)}
 .chip small{font-weight:400;opacity:.8}
 .chip .rm{width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.12);font-size:13px;line-height:22px;text-align:center}
 .none{color:#555;font-size:13px}
@@ -381,7 +392,8 @@ const DEFAULT_CONFIG = () => ({
   tables: MC2_TABLE_LIST(),
   casts: (DB && DB.mode === 'demo' ? ['あい','みく','れな','ゆな','さき','まりあ','ひな','りこ'] : []).map((n, i) => ({ id: 'c' + (i + 1), name: n, active: true })),
   setOptions: [60, 90, 120],
-  extMin: 30,
+  extHalf: 30,   // ハーフ延長
+  extFull: 60,   // 延長
   warnMin: 10,
   cutoff: 6,
   layout: MC2_LAYOUT()   // 席配置（座標は w×h のマス目単位）
@@ -392,7 +404,8 @@ function normConfig(c) {
     tables: vals(c.tables).length ? vals(c.tables) : d.tables,
     casts: vals(c.casts),
     setOptions: vals(c.setOptions).map(Number).filter(n => n > 0).length ? vals(c.setOptions).map(Number).filter(n => n > 0) : d.setOptions,
-    extMin: +c.extMin || d.extMin,
+    extHalf: +c.extHalf || d.extHalf,
+    extFull: +c.extFull || d.extFull,
     warnMin: +c.warnMin || d.warnMin,
     cutoff: c.cutoff == null ? d.cutoff : +c.cutoff,
     busy: !!c.busy,
@@ -425,6 +438,20 @@ function stageOf(s, now) {
 }
 const STAGE_LABEL = { empty: '空席', ok: '着席中', warn: '延長確認', over: '時間超過', check: '会計中' };
 const jonaiList = s => Object.entries(s.jonai || {}).map(([id, j]) => ({ id, ...j })).sort((a, b) => a.at - b.at);
+// 延長は1回ずつ記録（k: 'h'=ハーフ延長 / 'f'=延長）
+const extList = s => Object.entries(s.exts || {}).map(([id, e]) => ({ id, ...e })).sort((a, b) => a.at - b.at);
+const extCount = s => { const l = extList(s); return { h: l.filter(e => e.k === 'h').length, f: l.filter(e => e.k === 'f').length }; };
+// 指名が最優先：本指名があれば指名卓、なければ場内の有無で判定
+const kindOf = s => keys(s.hon).length ? 'k-hon' : jonaiList(s).length ? 'k-jon' : 'k-free';
+const roleOf = (s, cid) => s.hon && s.hon[cid] ? 'c-hon' : jonaiList(s).some(j => j.c === cid) ? 'c-jon' : 'c-free';
+const namesHtml = (ids, cls) => ids.map(c => `<span class="${cls(c)}">${esc(castName(c))}</span>`).join('、');
+const castRows = s => {
+  const hon = keys(s.hon), jon = [...new Set(jonaiList(s).map(j => j.c))], seat = keys(s.seat);
+  return (hon.length ? `<div class="row"><span class="lbl l-hon">本</span>${namesHtml(hon, () => 'c-hon')}</div>` : '')
+    + (jon.length ? `<div class="row"><span class="lbl l-jon">場</span>${namesHtml(jon, () => 'c-jon')}</div>` : '')
+    + (seat.length ? `<div class="row"><span class="lbl l-seat">付</span>${namesHtml(seat, c => roleOf(s, c))}</div>` : '');
+};
+const extText =(h, f, sep = '・') => [h ? 'ハーフ' + h : '', f ? '延長' + f : ''].filter(Boolean).map(x => sep + x).join('');
 
 // キャストの現在地（全卓を横断）
 function castWhere(cid) {
@@ -453,7 +480,7 @@ const A = {
     const f = sheet.form, tid = sheet.tid;
     if (sess(tid)) { toast('他の端末で既に着席済みです', 'warn'); sheet.form = null; renderSheet(); return; }
     const now = DB.now();
-    const s = { sid: rid('s'), start: now, end: now + f.setMin * 60000, setMin: f.setMin, guests: f.guests, customer: f.customer.trim(), hon: f.hon, seat: f.seat, ext: 0, status: 'seated', by: staff };
+    const s = { sid: rid('s'), start: now, end: now + f.setMin * 60000, setMin: f.setMin, guests: f.guests, customer: f.customer.trim(), hon: f.hon, seat: f.seat, status: 'seated', by: staff };
     DB.set('tables/' + tid, s);
     const hn = keys(f.hon).map(castName).join('・');
     log(tid, `着席 ${f.guests}名 ${f.setMin}分` + (s.customer ? ` (${s.customer}様)` : '') + (hn ? ` 本指名:${hn}` : ''));
@@ -461,14 +488,23 @@ const A = {
   },
 
   // --- 着席中 ---
-  extend(n) {
+  extend(k) {
     const tid = sheet.tid, s = sess(tid); if (!s) return;
-    const m = C().extMin * n;
+    const m = k === 'h' ? C().extHalf : C().extFull, label = k === 'h' ? 'ハーフ延長' : '延長';
     DB.incr('tables/' + tid + '/end', m * 60000);
-    DB.incr('tables/' + tid + '/ext', n);
+    DB.push('tables/' + tid + '/exts', { k, m, at: DB.now(), by: staff });
     if (s.status === 'check') DB.set('tables/' + tid + '/status', 'seated');
-    log(tid, `延長 +${m}分`);
-    toast(`${tableName(tid)} 延長 +${m}分`);
+    log(tid, `${label} +${m}分`);
+    toast(`${tableName(tid)} ${label} +${m}分`);
+  },
+  undoExt() {
+    const tid = sheet.tid, s = sess(tid); if (!s) return;
+    const e = extList(s).pop(); if (!e) return;
+    const label = e.k === 'h' ? 'ハーフ延長' : '延長';
+    if (!confirm(`直前の「${label} +${e.m}分」（${hm(e.at)}）を取り消しますか？\n（押し間違いの訂正用）`)) return;
+    DB.set(`tables/${tid}/exts/${e.id}`, null);
+    DB.incr('tables/' + tid + '/end', -e.m * 60000);
+    log(tid, `${label}取消 −${e.m}分`);
   },
   adjust(min) {
     const tid = sheet.tid; if (!sess(tid)) return;
@@ -539,16 +575,16 @@ const A = {
   leave() {
     const tid = sheet.tid, s = sess(tid); if (!s) return;
     if (!confirm(`${tableName(tid)} を退店（会計完了）にしますか？\n席は空席に戻り、記録は履歴に保存されます。`)) return;
-    const now = DB.now();
+    const now = DB.now(), ec = extCount(s);
     DB.push('history/' + bizDate(s.start), {
       table: tableName(tid), start: s.start, out: now, guests: s.guests || 1, customer: s.customer || '', memo: s.memo || '',
-      setMin: s.setMin, ext: s.ext || 0,
+      setMin: s.setMin, extH: ec.h, extF: ec.f,
       hon: keys(s.hon), honN: keys(s.hon).map(castName),
       jon: jonaiList(s).map(j => j.c), jonN: jonaiList(s).map(j => castName(j.c) + ' ' + hm(j.at)),
       by: staff
     });
     DB.set('tables/' + tid, null);
-    log(tid, `退店 (滞在${fmtDur(now - s.start)} 延長${s.ext || 0}回)`);
+    log(tid, `退店 (滞在${fmtDur(now - s.start)} ハーフ延長${ec.h}回 延長${ec.f}回)`);
     sheet = null; renderSheet();
   },
 
@@ -565,7 +601,7 @@ const A = {
     const casts = cnames.map(n => { const ex = c.casts.find(x => x.name === n); return ex ? { ...ex, active: true } : { id: rid('c'), name: n, active: true }; });
     c.casts.forEach(x => { if (!casts.some(y => y.id === x.id)) casts.push({ ...x, active: false }); });
     const setOptions = $('#s-sets').value.split(/[,、\s]+/).map(Number).filter(n => n > 0);
-    const cfg = { layout: c.layout, busy: c.busy, tables, casts, setOptions: setOptions.length ? setOptions : [60], extMin: +$('#s-ext').value || 30, warnMin: +$('#s-warn').value || 10, cutoff: Math.min(12, Math.max(0, +$('#s-cut').value || 0)) };
+    const cfg = { layout: c.layout, busy: c.busy, tables, casts, setOptions: setOptions.length ? setOptions : [60], extHalf: +$('#s-exth').value || 30, extFull: +$('#s-extf').value || 60, warnMin: +$('#s-warn').value || 10, cutoff: Math.min(12, Math.max(0, +$('#s-cut').value || 0)) };
     DB.set('config', cfg);
     log(null, '設定を変更');
     toast('設定を保存しました（全端末に反映）');
@@ -574,8 +610,8 @@ const A = {
   sound(on) { LS.set('sound', on); if (on) { unlockAudio(); beep('warn'); } render(); },
   logout() { if (!confirm('ログアウトしますか？')) return; LS.del('code'); location.reload(); },
   csv() {
-    const rows = [['卓', 'IN', 'OUT', '滞在', '人数', 'お客様', '本指名', '場内指名', 'セット(分)', '延長回数', 'メモ', '担当']];
-    histList().forEach(h => rows.push([h.table, hm(h.start), hm(h.out), fmtDur(h.out - h.start), h.guests, h.customer, (h.honN || []).join(' / '), (h.jonN || []).join(' / '), h.setMin, h.ext, h.memo || '', h.by]));
+    const rows = [['卓', 'IN', 'OUT', '滞在', '人数', 'お客様', '本指名', '場内指名', 'セット(分)', 'ハーフ延長(回)', '延長(回)', 'メモ', '担当']];
+    histList().forEach(h => rows.push([h.table, hm(h.start), hm(h.out), fmtDur(h.out - h.start), h.guests, h.customer, (h.honN || []).join(' / '), (h.jonN || []).join(' / '), h.setMin, h.extH || 0, h.extF || 0, h.memo || '', h.by]));
     const csv = '﻿' + rows.map(r => r.map(v => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(',')).join('\r\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -718,13 +754,11 @@ function mapCardHtml(t, it, L, now) {
   const head = `<div class="mn"><span>${esc(t.name)}</span><span class="badge">${STAGE_LABEL[st]}</span></div>`;
   const base = parentOf(t) ? 'mt sub' : 'mt';  // 分割席は図面どおり丸く表示
   if (!s) return `<div class="${base} st-empty" data-card="${t.id}" data-base="${base}" style="${pos(it, L)}" onclick="A.open('${t.id}')">${head}<div class="et">空席</div></div>`;
-  const hon = keys(s.hon).map(castName), jon = jonaiList(s).map(j => castName(j.c)), seat = keys(s.seat).map(castName);
-  return `<div class="${base} st-${st}" data-card="${t.id}" data-base="${base}" style="${pos(it, L)}" onclick="A.open('${t.id}')">${head}
+  const kb = base + ' ' + kindOf(s);
+  return `<div class="${kb} st-${st}" data-card="${t.id}" data-base="${kb}" style="${pos(it, L)}" onclick="A.open('${t.id}')">${head}
     <div class="timer" data-timer="${t.id}">${fmtRemain(s.end - now)}</div>
-    ${hon.length ? `<div class="row"><span class="lbl l-hon">本</span>${esc(hon.join('、'))}</div>` : ''}
-    ${jon.length ? `<div class="row"><span class="lbl l-jon">場</span>${esc(jon.join('、'))}</div>` : ''}
-    ${seat.length ? `<div class="row"><span class="lbl l-seat">付</span>${esc(seat.join('、'))}</div>` : ''}
-    <div class="row" style="color:var(--muted)">${s.guests || 1}名${s.ext ? '・延' + s.ext : ''}${s.customer ? '・' + esc(s.customer) : ''}</div>
+    ${castRows(s)}
+    <div class="row" style="color:var(--muted)">${s.guests || 1}名${(e => extText(e.h, e.f).replace('ハーフ', 'H').replace('延長', '延'))(extCount(s))}${s.customer ? '・' + esc(s.customer) : ''}</div>
   </div>`;
 }
 
@@ -770,14 +804,12 @@ function updateEdInfo() {
 function cardHtml(t, now) {
   const s = sess(t.id), st = stageOf(s, now);
   if (!s) return `<div class="card st-empty" data-card="${t.id}" onclick="A.open('${t.id}')"><div class="ct"><span class="tname">${esc(t.name)}</span><span class="badge">空席</span></div><div class="empty-txt">空席</div></div>`;
-  const hon = keys(s.hon).map(castName), jon = jonaiList(s).map(j => castName(j.c)), seat = keys(s.seat).map(castName);
-  return `<div class="card st-${st}" data-card="${t.id}" onclick="A.open('${t.id}')">
+  const kb = 'card ' + kindOf(s);
+  return `<div class="${kb} st-${st}" data-card="${t.id}" data-base="${kb}" onclick="A.open('${t.id}')">
     <div class="ct"><span class="tname">${esc(t.name)}</span><span class="badge">${STAGE_LABEL[st]}</span></div>
     <div class="timer" data-timer="${t.id}">${fmtRemain(s.end - now)}</div>
-    <div class="sub">${hm(s.start)}→${hm(s.end)}・${s.guests || 1}名${s.ext ? '・延長' + s.ext : ''}${s.customer ? '・' + esc(s.customer) : ''}</div>
-    ${hon.length ? `<div class="row"><span class="lbl l-hon">本</span>${esc(hon.join('、'))}</div>` : ''}
-    ${jon.length ? `<div class="row"><span class="lbl l-jon">場</span>${esc(jon.join('、'))}</div>` : ''}
-    ${seat.length ? `<div class="row"><span class="lbl l-seat">付</span>${esc(seat.join('、'))}</div>` : ''}
+    <div class="sub">${hm(s.start)}→${hm(s.end)}・${s.guests || 1}名${(e => extText(e.h, e.f))(extCount(s))}${s.customer ? '・' + esc(s.customer) : ''}</div>
+    ${castRows(s)}
   </div>`;
 }
 
@@ -822,23 +854,25 @@ function subSec(tid) {
   return `<div class="sec"><h3>分割席（繁忙時）</h3><div class="chips">${subs.map(x => `<button class="btn sm ${sess(x.id) ? 'gold' : ''}" onclick="A.open('${x.id}')">${esc(x.name)} ${sess(x.id) ? '使用中' : 'を使う'}</button>`).join('')}</div></div>`;
 }
 function viewSession(t, s) {
-  const now = DB.now(), st = stageOf(s, now), jl = jonaiList(s);
+  const now = DB.now(), st = stageOf(s, now), jl = jonaiList(s), ec = extCount(s);
   const empties = C().tables.filter(x => !sess(x.id));
   return `<div class="sh-head"><h2>${esc(t.name)}</h2><span class="badge" style="background:#333">${STAGE_LABEL[st]}</span><button class="x" onclick="A.close()">×</button></div>
   <div class="bigtimer" data-timer="${t.id}" data-st="${st}">${fmtRemain(s.end - now)}</div>
-  <div class="meta">IN ${hm(s.start)} → OUT ${hm(s.end)}・経過 ${fmtDur(now - s.start)}・セット${s.setMin}分${s.ext ? '・延長' + s.ext + '回' : ''}<br>着席操作: ${esc(s.by || '')}</div>
+  <div class="meta">IN ${hm(s.start)} → OUT ${hm(s.end)}・経過 ${fmtDur(now - s.start)}・セット${s.setMin}分${ec.h ? '・ハーフ延長' + ec.h + '回' : ''}${ec.f ? '・延長' + ec.f + '回' : ''}<br>着席操作: ${esc(s.by || '')}</div>
   <div class="btns">
-    <button class="btn gold" onclick="A.extend(1)">延長<br>+${C().extMin}分</button>
-    <button class="btn" onclick="A.adjust(5)">+5分</button>
-    <button class="btn" onclick="A.adjust(-5)">−5分</button>
+    <button class="btn gold" onclick="A.extend('h')"><span style="white-space:nowrap">ハーフ延長</span><br>+${C().extHalf}分</button>
+    <button class="btn gold" onclick="A.extend('f')">延長<br>+${C().extFull}分</button>
+    <button class="btn" onclick="A.undoExt()" ${ec.h || ec.f ? '' : 'disabled'}>延長<br>取消</button>
     <button class="btn ${s.status === 'check' ? '' : 'blue'}" onclick="A.check()">${s.status === 'check' ? '会計<br>取消' : '会計へ'}</button>
+    <button class="btn sm" onclick="A.adjust(5)">+5分</button>
+    <button class="btn sm" onclick="A.adjust(-5)">−5分</button>
   </div>
   <div class="sec"><h3><span class="lbl l-hon">本</span>本指名<button class="btn sm add" onclick="A.pick('hon')">＋追加</button></h3>
     <div class="chips">${keys(s.hon).map(c => `<span class="chip hon">${esc(castName(c))}<button class="rm" onclick="A.rmHon('${c}')">×</button></span>`).join('') || '<span class="none">なし（フリー）</span>'}</div></div>
   <div class="sec"><h3><span class="lbl l-jon">場</span>場内指名 ${jl.length ? jl.length + '件' : ''}<button class="btn sm add" onclick="A.pick('jon')">＋場内指名</button></h3>
     <div class="chips">${jl.map(j => `<span class="chip jon">${esc(castName(j.c))} <small>${hm(j.at)}</small><button class="rm" onclick="A.rmJon('${j.id}')">×</button></span>`).join('') || '<span class="none">なし</span>'}</div></div>
   <div class="sec"><h3><span class="lbl l-seat">付</span>今ついているキャスト<button class="btn sm add" onclick="A.pick('seat')">付け回し</button></h3>
-    <div class="chips">${keys(s.seat).map(c => `<span class="chip seat">${esc(castName(c))}<button class="rm" onclick="A.rmSeat('${c}')">抜</button></span>`).join('') || '<span class="none">誰もついていません</span>'}</div></div>
+    <div class="chips">${keys(s.seat).map(c => `<span class="chip seat ${roleOf(s, c)}">${esc(castName(c))}<button class="rm" onclick="A.rmSeat('${c}')">抜</button></span>`).join('') || '<span class="none">誰もついていません</span>'}</div></div>
   <div class="sec">
     <div class="field"><label>人数</label><div class="stepper"><button onclick="A.guests(-1)">−</button><b>${s.guests || 1}</b><button onclick="A.guests(1)">＋</button><span style="color:var(--muted)">名</span></div></div>
     <div class="field"><label>お客様名</label><input value="${esc(s.customer || '')}" onchange="A.field('customer',this)" placeholder="例：山田様"></div>
@@ -894,21 +928,23 @@ function renderCastList() {
 function histList() { return Object.values(S.history || {}).sort((a, b) => b.out - a.out); }
 function viewHist() {
   const hs = histList(), cnt = todayCounts();
-  const groups = hs.length, guests = hs.reduce((a, h) => a + (+h.guests || 0), 0), ext = hs.reduce((a, h) => a + (+h.ext || 0), 0);
+  const groups = hs.length, guests = hs.reduce((a, h) => a + (+h.guests || 0), 0);
+  const extH = hs.reduce((a, h) => a + (+h.extH || 0), 0), extF = hs.reduce((a, h) => a + (+h.extF || 0), 0);
   const jonTotal = hs.reduce((a, h) => a + (h.jon || []).length, 0);
   const rank = activeCasts().map(c => ({ c, n: cnt[c.id] || { hon: 0, jon: 0 } })).filter(x => x.n.hon || x.n.jon).sort((a, b) => (b.n.hon * 100 + b.n.jon) - (a.n.hon * 100 + a.n.jon));
   const logs = Object.values(S.logs || {}).sort((a, b) => b.t - a.t);
   return `<div class="stats">
     <div class="stat"><small>退店組数</small><b>${groups}</b></div>
     <div class="stat"><small>退店客数</small><b>${guests}</b></div>
-    <div class="stat"><small>延長回数</small><b>${ext}</b></div>
+    <div class="stat"><small>ハーフ延長</small><b>${extH}</b></div>
+    <div class="stat"><small>延長</small><b>${extF}</b></div>
     <div class="stat"><small>場内指名</small><b>${jonTotal}</b></div></div>
   <div style="display:flex;align-items:center"><span style="color:var(--muted);font-size:12px">営業日 ${curBiz}（${C().cutoff}時切替）</span><button class="btn sm" style="margin-left:auto" onclick="A.csv()">CSV出力</button></div>
   <h4>キャスト別（本日・在店中含む）</h4>
   <div class="list"><table class="rk"><tr><th>キャスト</th><th style="text-align:right">本指名組</th><th style="text-align:right">場内指名</th></tr>
   ${rank.map(r => `<tr><td>${esc(r.c.name)}</td><td class="n">${r.n.hon}</td><td class="n">${r.n.jon}</td></tr>`).join('') || '<tr><td colspan="3" class="none">まだ記録がありません</td></tr>'}</table></div>
   <h4>退店済みテーブル</h4>
-  <div class="list">${hs.map(h => `<div class="li"><span class="t">${hm(h.start)}<br>${hm(h.out)}</span><span class="m"><b>${esc(h.table)}</b> ${h.guests}名 ${esc(h.customer || '')} ・滞在${fmtDur(h.out - h.start)}${h.ext ? '・延長' + h.ext : ''}
+  <div class="list">${hs.map(h => `<div class="li"><span class="t">${hm(h.start)}<br>${hm(h.out)}</span><span class="m"><b>${esc(h.table)}</b> ${h.guests}名 ${esc(h.customer || '')} ・滞在${fmtDur(h.out - h.start)}${extText(h.extH, h.extF)}
     ${(h.honN || []).length ? `<br><span class="lbl l-hon">本</span>${esc(h.honN.join('、'))}` : ''}
     ${(h.jonN || []).length ? `<br><span class="lbl l-jon">場</span>${esc(h.jonN.join('、'))}` : ''}
     ${h.memo ? `<br><span class="by">メモ: ${esc(h.memo)}</span>` : ''}</span></div>`).join('') || '<div class="li"><span class="m none">なし</span></div>'}</div>
@@ -929,7 +965,8 @@ function viewSet() {
     <p class="help">名前を消しても過去の記録は残ります。名前を変えると別人扱いになります。</p></div>
   <div class="two">
     <div class="field"><label>セット時間の選択肢（分・カンマ区切り）</label><input id="s-sets" value="${esc(c.setOptions.join(','))}"></div>
-    <div class="field"><label>延長1回の時間（分）</label><input id="s-ext" type="number" value="${c.extMin}"></div>
+    <div class="field"><label>ハーフ延長の時間（分）</label><input id="s-exth" type="number" value="${c.extHalf}"></div>
+    <div class="field"><label>延長の時間（分）</label><input id="s-extf" type="number" value="${c.extFull}"></div>
     <div class="field"><label>延長確認の通知（残り何分）</label><input id="s-warn" type="number" value="${c.warnMin}"></div>
     <div class="field"><label>営業日の切替時刻（時）</label><input id="s-cut" type="number" value="${c.cutoff}"></div>
   </div>
