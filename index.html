@@ -106,7 +106,7 @@ main{padding:12px;max-width:1300px;margin:0 auto}
 .mapwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px}
 .map{position:relative;container-type:inline-size;min-width:340px;background:#101018 radial-gradient(circle,#262634 1px,transparent 1px) 0 0/20px 20px;border:1px solid var(--line);border-radius:14px}
 .mt,.decor,.ei{position:absolute;border-radius:9px;overflow:hidden}
-.mt{background:var(--panel);border:1px solid var(--line);border-left:4px solid #444;padding:3px 5px;cursor:pointer;font-size:clamp(9px,1.9cqw,14px);line-height:1.25}
+.mt{background:var(--panel);border:1px solid var(--line);border-left:4px solid #444;padding:3px 5px;cursor:pointer;font-size:clamp(10px,2.1cqw,15px);line-height:1.25}
 .mt .mn{display:flex;justify-content:space-between;align-items:center;gap:3px;font-weight:800}
 .mt .badge{display:none}
 .mt{container-type:inline-size}
@@ -124,10 +124,10 @@ main{padding:12px;max-width:1300px;margin:0 auto}
 .kpi{font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:4px 9px;white-space:nowrap}
 .kpi b{color:var(--text);font-size:14px}
 .kpi.alert b{color:var(--red)}
-.map:not(.fit):not(.editing){min-width:1000px}
 .mt.sub{border-radius:50%;border-width:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3px;text-align:center}
 .mt.sub .mn{justify-content:center}
 .mt.sub .row{display:none}
+.mt.sub.st-empty{border-style:dashed;border-color:#6a6a7a;opacity:1}
 .mt.sub.st-ok{border-color:var(--green)}
 .mt.sub.st-warn{border-color:var(--amber)}
 .mt.sub.st-over{border-color:var(--red)}
@@ -351,12 +351,13 @@ const alerted = {};      // sid → 最後に通知した段階
 
 // MC2 の実際の席配置（手書きマップを等倍で写したもの・1マス＝図面の約10px）。「″」付きは繁忙時だけ使う分割席
 const MC2_TABLES = [
-  ['T1', 'T1', 65.5, 0.5, 16, 12.5], ['T2', 'T2', 66.5, 16.5, 16, 14], ['T2s', 'T2″', 83, 19.5, 10.5, 9],
-  ['T3', 'T3', 87, 32.5, 12, 10.5], ['T3s', 'T3″', 99, 33.5, 8, 9.5], ['T4', 'T4', 108.5, 32, 16, 11.5],
-  ['T5', 'T5', 114.5, 55.5, 15.5, 14], ['T6', 'T6', 96, 54, 11, 16.5], ['T6s', 'T6″', 97, 70.5, 11.5, 9],
-  ['T7', 'T7', 84, 54, 9, 15], ['T7s', 'T7″', 84, 69.5, 10, 9.5],
-  ['V1', 'V1', 3, 7, 11, 9], ['V1s', 'V1″', 15, 7, 9, 9], ['V2', 'V2', 3, 28, 11, 9], ['V2s', 'V2″', 15, 28, 9, 9],
-  ['C1', 'C1', 52.5, 21, 6, 6], ['C2', 'C2', 41, 21, 6, 6], ['C3', 'C3', 30, 21, 6, 6]
+  // 卓は図面の中心位置を保ったまま、タップしやすいよう一回り大きくしている
+  ['T1', 'T1', 63.5, 0, 20, 14], ['T2', 'T2', 64.5, 16, 20, 15], ['T2s', 'T2″', 85, 18.5, 13, 11],
+  ['T3', 'T3', 85.5, 31.5, 15, 13], ['T3s', 'T3″', 101, 32.5, 10, 12], ['T4', 'T4', 112, 31.5, 19, 13],
+  ['T5', 'T5', 113, 54.5, 18, 16], ['T6', 'T6', 95.5, 53, 13, 17], ['T6s', 'T6″', 95.5, 70.5, 13, 9.5],
+  ['T7', 'T7', 82.5, 53, 12, 17], ['T7s', 'T7″', 82.5, 70.5, 12, 9.5],
+  ['V1', 'V1', 1.5, 6, 13.5, 13], ['V1s', 'V1″', 16, 6, 9.5, 13], ['V2', 'V2', 1.5, 25, 13.5, 13], ['V2s', 'V2″', 16, 25, 9.5, 13],
+  ['C1', 'C1', 51, 21, 9, 9], ['C2', 'C2', 40, 21, 9, 9], ['C3', 'C3', 29, 21, 9, 9]
 ];
 const MC2_LAYOUT = () => ({
   w: 131, h: 80,
@@ -374,7 +375,8 @@ function parentOf(t) {
   const p = C().tables.find(x => x.name === m[1]); return p ? p.id : null;
 }
 const subsOf = tid => C().tables.filter(t => parentOf(t) === tid);
-const visibleTable = t => !parentOf(t) || sess(t.id) || LS.get('showSub', false);
+// 分割席は「繁忙日モード」（全端末共通）がONのとき、または使用中のときだけ表示
+const visibleTable = t => !parentOf(t) || sess(t.id) || C().busy;
 const DEFAULT_CONFIG = () => ({
   tables: MC2_TABLE_LIST(),
   casts: (DB && DB.mode === 'demo' ? ['あい','みく','れな','ゆな','さき','まりあ','ひな','りこ'] : []).map((n, i) => ({ id: 'c' + (i + 1), name: n, active: true })),
@@ -393,6 +395,7 @@ function normConfig(c) {
     extMin: +c.extMin || d.extMin,
     warnMin: +c.warnMin || d.warnMin,
     cutoff: c.cutoff == null ? d.cutoff : +c.cutoff,
+    busy: !!c.busy,
     layout: c.layout ? { w: +c.layout.w || 100, h: +c.layout.h || 100, items: c.layout.items || {}, decor: vals(c.layout.decor) } : d.layout
   };
 }
@@ -562,7 +565,7 @@ const A = {
     const casts = cnames.map(n => { const ex = c.casts.find(x => x.name === n); return ex ? { ...ex, active: true } : { id: rid('c'), name: n, active: true }; });
     c.casts.forEach(x => { if (!casts.some(y => y.id === x.id)) casts.push({ ...x, active: false }); });
     const setOptions = $('#s-sets').value.split(/[,、\s]+/).map(Number).filter(n => n > 0);
-    const cfg = { layout: c.layout, tables, casts, setOptions: setOptions.length ? setOptions : [60], extMin: +$('#s-ext').value || 30, warnMin: +$('#s-warn').value || 10, cutoff: Math.min(12, Math.max(0, +$('#s-cut').value || 0)) };
+    const cfg = { layout: c.layout, busy: c.busy, tables, casts, setOptions: setOptions.length ? setOptions : [60], extMin: +$('#s-ext').value || 30, warnMin: +$('#s-warn').value || 10, cutoff: Math.min(12, Math.max(0, +$('#s-cut').value || 0)) };
     DB.set('config', cfg);
     log(null, '設定を変更');
     toast('設定を保存しました（全端末に反映）');
@@ -579,8 +582,17 @@ const A = {
     a.download = `MC2_${curBiz}.csv`; a.click();
   },
   view(v) { LS.set('view', v); render(); },
-  showSub() { LS.set('showSub', !LS.get('showSub', false)); render(); },
-  fit() { LS.set('mapFit', !LS.get('mapFit', true)); render(); },
+  busy() {
+    const on = !C().busy;
+    if (!on) {
+      const used = C().tables.filter(t => parentOf(t) && sess(t.id));
+      if (used.length && !confirm(`${used.map(t => t.name).join('・')} が使用中です。退店するまでは表示されたままになります。繁忙日モードをOFFにしますか？`)) return;
+    }
+    DB.set('config/busy', on);
+    log(null, `繁忙日モード ${on ? 'ON（″席を開放）' : 'OFF'}`);
+    toast(on ? '繁忙日モードON：″の席が全端末で選べます' : '繁忙日モードOFF');
+  },
+  fit() { LS.set('mapFit', !LS.get('mapFit', false)); render(); },
   portraitOk() { document.body.classList.add('np'); },
   landscape() {
     const el = document.documentElement;
@@ -690,13 +702,13 @@ function viewBoard() {
     <span class="kpi">使用 <b>${used}</b>/${mainCount}卓</span><span class="kpi">客 <b>${guests}</b>名</span>
     <span class="kpi ${over ? 'alert' : ''}">要対応 <b>${over}</b></span><span class="kpi">待機 <b>${activeCasts().length - busy}</b>/${activeCasts().length}名</span>
     <span style="margin-left:auto;display:flex;gap:4px">
-      <button class="btn sm ${LS.get('showSub', false) ? 'gold' : ''}" onclick="A.showSub()">分割席″${LS.get('showSub', false) ? '表示中' : ''}</button>
-      ${mode === 'map' ? `<button class="btn sm" onclick="A.fit()">${LS.get('mapFit', true) ? '拡大' : '全体'}</button><button class="btn sm" onclick="A.editMap()">配置</button>` : ''}</span></div>
+      <button class="btn sm ${C().busy ? 'gold' : ''}" onclick="A.busy()">繁忙日モード ${C().busy ? 'ON' : 'OFF'}</button>
+      ${mode === 'map' ? `<button class="btn sm" onclick="A.fit()">${LS.get('mapFit', false) ? '拡大' : '全体'}</button><button class="btn sm" onclick="A.editMap()">配置</button>` : ''}</span></div>
   ${mode === 'map' ? viewMap(now) : `<div class="grid">${ts.map(t => cardHtml(t, now)).join('')}</div>`}`;
 }
 function viewMap(now) {
   const L = layoutOf();
-  return `<div class="mapwrap"><div class="map ${LS.get('mapFit', true) ? 'fit' : ''}" style="aspect-ratio:${L.w}/${L.h};--ar:${L.w / L.h}">
+  return `<div class="mapwrap"><div class="map ${LS.get('mapFit', false) ? 'fit' : ''}" style="aspect-ratio:${L.w}/${L.h};--ar:${L.w / L.h}">
     ${L.decor.map(d => `<div class="decor" style="${pos(d, L)}">${esc(d.label)}</div>`).join('')}
     ${C().tables.filter(visibleTable).map(t => mapCardHtml(t, L.items[t.id], L, now)).join('')}
   </div></div>`;
@@ -924,7 +936,7 @@ function viewSet() {
   <button class="btn gold wide" onclick="A.saveSettings()">店舗設定を保存</button>
   <button class="btn wide" style="margin-top:8px" onclick="A.editMap()">席配置（テーブルマップ）を編集</button>
   <button class="btn wide" style="margin-top:8px" onclick="A.loadMC2()">卓・席配置を MC2 標準に戻す</button>
-  <p class="help">卓名の最後に「″」を付けると分割席（例：T2″ は T2 の分割席）。分割席は使用中のときだけ表示され、親の卓の画面から開けます。</p>
+  <p class="help">卓名の最後に「″」を付けると分割席（例：T2″ は T2 の分割席）。分割席は、テーブル画面の「繁忙日モード」をONにすると全端末のマップに出ます（OFFでも親の卓の画面から開けます）。</p>
   <h4>接続</h4>
   <p class="help">モード：${DB.mode === 'demo' ? 'デモ（この端末のみ）' : 'Firebase リアルタイム同期'}<br>同じ「店舗コード」でログインした端末どうしで共有されます。</p>
   <button class="btn wide" style="margin-top:8px" onclick="A.logout()">ログアウト（店舗コードを入れ直す）</button>`;
