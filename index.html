@@ -1,0 +1,1019 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MC2卓管理">
+<meta name="theme-color" content="#0b0b10">
+<title>MC2 テーブル管理</title>
+<script>
+/* =========================================================
+   ★ Firebase 設定 ★
+   導入手順書の「手順5」でコピーした firebaseConfig をここに貼り付けてください。
+   null のままだと「デモモード（この端末・このブラウザ内だけで同期）」で動きます。
+   ========================================================= */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyD96ujctbpkPGb2DeoBD1XjHL1sTzEjPmM",
+  authDomain: "mc2-table.firebaseapp.com",
+  databaseURL: "https://mc2-table-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "mc2-table",
+  storageBucket: "mc2-table.firebasestorage.app",
+  messagingSenderId: "597413690023",
+  appId: "1:597413690023:web:5e603a971a38116a323982"
+};
+/* 書き方の例:
+const FIREBASE_CONFIG = {
+  apiKey: "AIza....",
+  authDomain: "mc2-table.firebaseapp.com",
+  databaseURL: "https://mc2-table-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "mc2-table",
+  appId: "1:xxxx:web:xxxx"
+};
+*/
+</script>
+<style>
+:root{
+  --bg:#0b0b10;--panel:#15151d;--panel2:#1e1e29;--line:#2c2c3b;--text:#f3f3f6;--muted:#9b9bad;
+  --gold:#d9b54a;--green:#27c27a;--amber:#f5a623;--red:#ff4d5e;--blue:#3d8bfd;--pink:#ff6fae;--violet:#a98bff;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif;font-size:15px}
+body{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+input,textarea,select{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%}
+textarea{min-height:90px;resize:vertical}
+input:focus,textarea:focus{outline:2px solid var(--gold);outline-offset:-1px}
+.hidden{display:none!important}
+
+/* header */
+header{position:sticky;top:0;z-index:20;background:rgba(11,11,16,.94);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:calc(8px + env(safe-area-inset-top)) 14px 8px;display:flex;align-items:center;gap:10px}
+.logo{font-weight:800;letter-spacing:.08em;color:var(--gold);font-size:18px}
+.clock{font-variant-numeric:tabular-nums;font-weight:700;font-size:18px;margin-left:auto}
+.conn{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--red)}
+.dot.on{background:var(--green);box-shadow:0 0 8px var(--green)}
+.who{font-size:12px;color:var(--muted);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.demo{background:#3a2a00;color:#ffd77a;font-size:12px;text-align:center;padding:6px 10px}
+
+/* nav */
+nav{position:fixed;bottom:0;left:0;right:0;z-index:30;display:flex;background:rgba(15,15,22,.97);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;padding:9px 0 8px;font-size:11px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px}
+nav button b{font-size:19px;line-height:1}
+nav button.on{color:var(--gold)}
+
+main{padding:12px;max-width:1300px;margin:0 auto}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.stat small{display:block;color:var(--muted);font-size:11px}
+.stat b{font-size:20px;font-variant-numeric:tabular-nums}
+.stat.alert b{color:var(--red)}
+
+/* table cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:10px}
+.card{position:relative;background:var(--panel);border:1px solid var(--line);border-left:5px solid #444;border-radius:14px;padding:10px 11px;min-height:132px;cursor:pointer;transition:transform .08s}
+.card:active{transform:scale(.97)}
+.ct{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.tname{font-weight:800;font-size:18px}
+.badge{font-size:11px;padding:2px 7px;border-radius:99px;background:#333;color:#ddd;white-space:nowrap}
+.card .timer{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;margin:4px 0 0;letter-spacing:.02em}
+.card .sub{font-size:11px;color:var(--muted)}
+.card .row{font-size:12.5px;margin-top:3px;line-height:1.35;word-break:break-all}
+.lbl{display:inline-block;font-size:10px;font-weight:700;padding:0 5px;border-radius:5px;margin-right:4px;vertical-align:1px}
+.l-hon{background:var(--gold);color:#000}
+.l-jon{background:var(--pink);color:#000}
+.l-seat{background:var(--violet);color:#000}
+.empty-txt{color:#555;font-size:22px;font-weight:700;margin-top:22px;text-align:center}
+.st-empty{opacity:.75}
+.st-ok{border-left-color:var(--green)}
+.st-ok .badge{background:rgba(39,194,122,.2);color:var(--green)}
+.st-warn{border-left-color:var(--amber);background:#221a0b}
+.st-warn .badge{background:var(--amber);color:#000}
+.st-warn .timer{color:var(--amber)}
+.st-over{border-left-color:var(--red);background:#2a0e12;animation:blink 1.2s infinite}
+.st-over .badge{background:var(--red);color:#fff}
+.st-over .timer{color:var(--red)}
+.st-check{border-left-color:var(--blue);background:#0d1830}
+.st-check .badge{background:var(--blue);color:#fff}
+.st-check .timer{color:var(--blue)}
+/* table map */
+.viewbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
+.viewbar .seg{flex-wrap:nowrap}
+.viewbar .seg button{flex:0 0 auto;min-width:56px;padding:7px 10px}
+.viewbar .btn.sm{white-space:nowrap}
+.mapwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px}
+.map{position:relative;container-type:inline-size;min-width:340px;background:#101018 radial-gradient(circle,#262634 1px,transparent 1px) 0 0/20px 20px;border:1px solid var(--line);border-radius:14px}
+.mt,.decor,.ei{position:absolute;border-radius:9px;overflow:hidden}
+.mt{background:var(--panel);border:1px solid var(--line);border-left:4px solid #444;padding:3px 5px;cursor:pointer;font-size:clamp(9px,1.9cqw,14px);line-height:1.25}
+.mt .mn{display:flex;justify-content:space-between;align-items:center;gap:3px;font-weight:800}
+.mt .badge{display:none}
+.mt{container-type:inline-size}
+.mt .timer{font-weight:800;font-size:clamp(11px,22cqw,30px);font-variant-numeric:tabular-nums;line-height:1.1}
+.mt .row{font-size:.92em;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mt .lbl{font-size:.8em;padding:0 3px;margin-right:2px}
+.mt .et{color:#555;font-weight:700;text-align:center;margin-top:.4em}
+.decor{background:repeating-linear-gradient(45deg,#181822,#181822 6px,#1f1f2b 6px,#1f1f2b 12px);border:1px dashed #4a4a5a;color:var(--muted);display:flex;align-items:center;justify-content:center;text-align:center;font-size:clamp(9px,1.8cqw,13px);pointer-events:none}
+.ei{background:var(--panel2);border:2px solid var(--gold);touch-action:none;cursor:move;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:800;font-size:clamp(10px,2cqw,15px);user-select:none;-webkit-user-select:none}
+.ei.dec{border-style:dashed;border-color:#777;color:var(--muted);font-weight:400}
+.ei.sel{box-shadow:0 0 0 3px var(--pink);z-index:2}
+.rh{position:absolute;right:0;bottom:0;width:20px;height:20px;background:var(--gold);border-radius:6px 0 7px 0;cursor:nwse-resize}
+.edbar{background:#2a2410;border:1px solid var(--gold);border-radius:12px;padding:10px;margin-bottom:10px;font-size:13px}
+.edbar .chips{margin-top:8px}
+.kpi{font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:4px 9px;white-space:nowrap}
+.kpi b{color:var(--text);font-size:14px}
+.kpi.alert b{color:var(--red)}
+.map:not(.fit):not(.editing){min-width:1000px}
+.mt.sub{border-radius:50%;border-width:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3px;text-align:center}
+.mt.sub .mn{justify-content:center}
+.mt.sub .row{display:none}
+.mt.sub.st-ok{border-color:var(--green)}
+.mt.sub.st-warn{border-color:var(--amber)}
+.mt.sub.st-over{border-color:var(--red)}
+.mt.sub.st-check{border-color:var(--blue)}
+.ei.sub{border-radius:50%}
+.rail-top{display:none}
+#rotate{display:none}
+
+/* ===== 横画面レイアウト（基本はこちら） ===== */
+@media (orientation:landscape){
+  body{padding-bottom:0;padding-left:calc(70px + env(safe-area-inset-left))}
+  header,.demo{display:none}
+  nav{top:0;bottom:0;right:auto;width:calc(70px + env(safe-area-inset-left));flex-direction:column;justify-content:flex-start;gap:2px;border-top:0;border-right:1px solid var(--line);padding:calc(6px + env(safe-area-inset-top)) 0 env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  nav button{flex:0 0 auto;padding:10px 0}
+  .rail-top{display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 0 10px;border-bottom:1px solid var(--line);margin-bottom:4px}
+  .rail-top .logo{font-size:16px}
+  .rail-top .clock{margin:0;font-size:14px}
+  main{max-width:none;padding:8px 10px}
+  .viewbar{margin-bottom:6px}
+  .map.fit{width:min(100%,calc((100dvh - 66px) * var(--ar)));margin:0 auto}
+  /* 卓の詳細は右側に出す（マップを隠さない） */
+  .sheet{left:auto;right:0;top:0;bottom:0;width:min(460px,62vw);max-height:none;border-radius:18px 0 0 18px;border-top:0;border-left:1px solid var(--line);margin:0;padding-top:calc(12px + env(safe-area-inset-top))}
+  .toasts{top:calc(10px + env(safe-area-inset-top))}
+}
+@media (orientation:portrait) and (max-width:900px){
+  body:not(.np) #rotate{display:flex;position:fixed;inset:0;z-index:100;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px}
+  #rotate p{color:var(--muted);margin:0 0 10px}
+  #rotate .btn{width:260px}
+}
+@keyframes blink{50%{box-shadow:0 0 0 3px rgba(255,77,94,.55)}}
+
+/* sheet */
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:40}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:41;background:var(--panel);border-radius:18px 18px 0 0;max-height:92vh;overflow:auto;padding:14px 14px calc(18px + env(safe-area-inset-bottom));max-width:720px;margin:0 auto;border-top:1px solid var(--line)}
+.sh-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.sh-head h2{margin:0;font-size:22px}
+.x{margin-left:auto;font-size:26px;color:var(--muted);padding:0 6px}
+.bigtimer{font-size:46px;font-weight:800;font-variant-numeric:tabular-nums;text-align:center;line-height:1.1}
+.bigtimer[data-st=warn]{color:var(--amber)}
+.bigtimer[data-st=over]{color:var(--red)}
+.bigtimer[data-st=check]{color:var(--blue)}
+.meta{text-align:center;color:var(--muted);font-size:13px;margin:2px 0 10px}
+.sec{border-top:1px solid var(--line);padding:10px 0}
+.sec h3{margin:0 0 7px;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.sec h3 .add{margin-left:auto}
+.btns{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:11px 6px;font-weight:700;text-align:center}
+.btn:active{filter:brightness(1.4)}
+.btn.gold{background:var(--gold);color:#000;border-color:var(--gold)}
+.btn.blue{background:var(--blue);border-color:var(--blue)}
+.btn.red{background:var(--red);border-color:var(--red);color:#fff}
+.btn.green{background:var(--green);border-color:var(--green);color:#000}
+.btn.wide{width:100%;padding:14px;font-size:16px}
+.btn.sm{padding:6px 10px;font-size:12px;border-radius:8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:6px 6px 6px 12px;font-weight:700;font-size:14px}
+.chip.hon{background:rgba(217,181,74,.18);color:var(--gold);border:1px solid var(--gold)}
+.chip.jon{background:rgba(255,111,174,.15);color:var(--pink);border:1px solid var(--pink)}
+.chip.seat{background:rgba(169,139,255,.15);color:var(--violet);border:1px solid var(--violet)}
+.chip small{font-weight:400;opacity:.8}
+.chip .rm{width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.12);font-size:13px;line-height:22px;text-align:center}
+.none{color:#555;font-size:13px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.stepper{display:flex;align-items:center;gap:8px}
+.stepper button{width:44px;height:44px;border-radius:11px;background:var(--panel2);border:1px solid var(--line);font-size:22px;font-weight:700}
+.stepper b{min-width:40px;text-align:center;font-size:22px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{flex:1;min-width:64px;padding:10px 4px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);font-weight:700}
+.seg button.on{background:var(--gold);color:#000;border-color:var(--gold)}
+
+/* picker */
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:7px;margin-top:8px}
+.pc{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:10px 6px;text-align:center;font-weight:700}
+.pc small{display:block;font-weight:400;font-size:10.5px;color:var(--muted);margin-top:2px}
+.pc.sel{background:var(--gold);color:#000;border-color:var(--gold)}
+.pc.sel small{color:#333}
+.pc.busy small{color:var(--pink)}
+
+/* lists */
+.list{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.li{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-bottom:1px solid var(--line)}
+.li:last-child{border-bottom:0}
+.li .t{color:var(--muted);font-variant-numeric:tabular-nums;font-size:12px;min-width:42px}
+.li .m{flex:1;font-size:13.5px;word-break:break-all}
+.li .by{color:var(--muted);font-size:11px}
+h4{margin:18px 0 8px;font-size:14px;color:var(--gold)}
+.castrow{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.castrow:last-child{border-bottom:0}
+.castrow .nm{font-weight:800;font-size:16px;min-width:70px}
+.castrow .where{flex:1;font-size:12.5px;line-height:1.5}
+.castrow .cnt{font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
+.state{font-size:11px;padding:2px 8px;border-radius:99px;white-space:nowrap}
+.state.free{background:#24323a;color:#8fd3ff}
+.state.busy{background:var(--violet);color:#000}
+table.rk{width:100%;border-collapse:collapse;font-size:13px}
+table.rk th,table.rk td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left}
+table.rk th{color:var(--muted);font-weight:400;font-size:11px}
+table.rk td.n{text-align:right;font-variant-numeric:tabular-nums}
+.search{margin-bottom:10px}
+
+/* login */
+.login{max-width:420px;margin:12vh auto 0;padding:20px}
+.login h1{color:var(--gold);letter-spacing:.1em;text-align:center;margin:0 0 4px}
+.login p{color:var(--muted);text-align:center;font-size:13px;margin:0 0 24px}
+
+.toasts{position:fixed;top:calc(60px + env(safe-area-inset-top));left:0;right:0;z-index:60;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+.toast{background:#262633;border:1px solid var(--line);padding:10px 16px;border-radius:12px;font-weight:700;box-shadow:0 6px 24px rgba(0,0,0,.5);max-width:92vw}
+.toast.warn{background:var(--amber);color:#000}
+.toast.over{background:var(--red);color:#fff}
+.help{font-size:12px;color:var(--muted);margin:4px 0 0}
+@media (min-width:900px){.grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}.card{min-height:150px}}
+@media (max-width:380px){.stats{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toasts" id="toasts"></div>
+
+<script>
+'use strict';
+/* ============ 基本ユーティリティ ============ */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const hm = t => { const d = new Date(t); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+const clone = v => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
+const rid = (p='') => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const vals = o => o ? (Array.isArray(o) ? o.filter(Boolean) : Object.values(o)) : [];
+const keys = o => o ? Object.keys(o).filter(k => o[k]) : [];
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem('mc2:' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('mc2:' + k, JSON.stringify(v)); } catch (e) {} },
+  del(k) { try { localStorage.removeItem('mc2:' + k); } catch (e) {} }
+};
+function fmtRemain(ms) {
+  const neg = ms < 0, s = Math.floor(Math.abs(ms) / 1000);
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60;
+  return (neg ? '-' : '') + (h ? h + ':' + pad(m) : m) + ':' + pad(ss);
+}
+function fmtDur(ms) { const m = Math.max(0, Math.floor(ms / 60000)); return Math.floor(m / 60) + ':' + pad(m % 60); }
+// 店舗コード → 保存先キー（同じコードなら全端末で同じ場所を見る）
+function storeKey(code) {
+  const h = (str, seed) => {
+    let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+    for (let i = 0; i < str.length; i++) { const ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, '0');
+  };
+  const s = 'MC2::' + code.trim();
+  return 'mc2_' + h(s, 1) + h(s, 7) + h(s, 13) + h(s, 29);
+}
+
+/* ============ データストア（Firebase / デモ） ============ */
+function makeLocalStore(root) {
+  const KEY = 'mc2demo:' + root;
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } };
+  let tree = load();
+  const subs = new Set();
+  const bc = 'BroadcastChannel' in window ? new BroadcastChannel(KEY) : null;
+  const reload = () => { tree = load(); emit(); };
+  if (bc) bc.onmessage = reload;
+  window.addEventListener('storage', e => { if (e.key === KEY) reload(); });
+  const get = p => p.split('/').filter(Boolean).reduce((o, k) => o == null ? undefined : o[k], tree);
+  function setIn(p, v) {
+    const ks = p.split('/').filter(Boolean); let o = tree;
+    for (let i = 0; i < ks.length - 1; i++) { if (typeof o[ks[i]] !== 'object' || o[ks[i]] === null) o[ks[i]] = {}; o = o[ks[i]]; }
+    const last = ks[ks.length - 1];
+    if (v === null || v === undefined) delete o[last]; else o[last] = clone(v);
+  }
+  function emit() { subs.forEach(s => s.cb(clone(get(s.path)) ?? null)); }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(tree)); } catch (e) {} if (bc) bc.postMessage(1); emit(); }
+  return {
+    mode: 'demo',
+    now: () => Date.now(),
+    on(p, cb) { const s = { path: p, cb }; subs.add(s); setTimeout(() => cb(clone(get(p)) ?? null)); return () => subs.delete(s); },
+    set(p, v) { setIn(p, v); save(); return Promise.resolve(); },
+    update(p, o) { for (const k in o) setIn(p + '/' + k, o[k]); save(); return Promise.resolve(); },
+    push(p, v) { const id = rid(); setIn(p + '/' + id, v); save(); return Promise.resolve(id); },
+    incr(p, d) { setIn(p, (get(p) || 0) + d); save(); return Promise.resolve(); },
+    onConn(cb) { cb(true); }
+  };
+}
+function makeFbStore(db, root) {
+  let offset = 0;
+  db.ref('.info/serverTimeOffset').on('value', s => { offset = s.val() || 0; });
+  const r = p => db.ref(root + '/' + p);
+  const fail = e => toast('保存エラー: ' + e.message, 'over');
+  return {
+    mode: 'firebase',
+    now: () => Date.now() + offset,   // サーバー時刻に補正（全端末でタイマーが揃う）
+    on(p, cb) { const ref = r(p); const h = s => cb(s.val()); ref.on('value', h, e => toast('読込エラー: ' + e.message, 'over')); return () => ref.off('value', h); },
+    set: (p, v) => r(p).set(v).catch(fail),
+    update: (p, o) => r(p).update(o).catch(fail),
+    push(p, v) { const ref = r(p).push(); ref.set(v).catch(fail); return Promise.resolve(ref.key); },
+    incr: (p, d) => r(p).transaction(v => (v || 0) + d).catch(fail),  // 同時押しでも取りこぼさない
+    onConn(cb) { db.ref('.info/connected').on('value', s => cb(!!s.val())); }
+  };
+}
+function loadScript(src) {
+  return new Promise((ok, ng) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ng(new Error('読込失敗 ' + src)); document.head.appendChild(s); });
+}
+async function loadFirebase() {
+  const v = '10.12.2', base = 'https://www.gstatic.com/firebasejs/' + v + '/';
+  await loadScript(base + 'firebase-app-compat.js');
+  await loadScript(base + 'firebase-auth-compat.js');
+  await loadScript(base + 'firebase-database-compat.js');
+}
+
+/* ============ 状態 ============ */
+let DB = null;
+const S = { config: null, tables: {}, logs: {}, history: {} };
+let tab = LS.get('tab', 'board');
+let sheet = null;        // {tid, pick, form, q}
+let curBiz = null, unsubBiz = [];
+let online = false;
+let staff = LS.get('staff', '');
+const alerted = {};      // sid → 最後に通知した段階
+
+// MC2 の実際の席配置（手書きマップを等倍で写したもの・1マス＝図面の約10px）。「″」付きは繁忙時だけ使う分割席
+const MC2_TABLES = [
+  ['T1', 'T1', 65.5, 0.5, 16, 12.5], ['T2', 'T2', 66.5, 16.5, 16, 14], ['T2s', 'T2″', 83, 19.5, 10.5, 9],
+  ['T3', 'T3', 87, 32.5, 12, 10.5], ['T3s', 'T3″', 99, 33.5, 8, 9.5], ['T4', 'T4', 108.5, 32, 16, 11.5],
+  ['T5', 'T5', 114.5, 55.5, 15.5, 14], ['T6', 'T6', 96, 54, 11, 16.5], ['T6s', 'T6″', 97, 70.5, 11.5, 9],
+  ['T7', 'T7', 84, 54, 9, 15], ['T7s', 'T7″', 84, 69.5, 10, 9.5],
+  ['V1', 'V1', 3, 7, 11, 9], ['V1s', 'V1″', 15, 7, 9, 9], ['V2', 'V2', 3, 28, 11, 9], ['V2s', 'V2″', 15, 28, 9, 9],
+  ['C1', 'C1', 52.5, 21, 6, 6], ['C2', 'C2', 41, 21, 6, 6], ['C3', 'C3', 30, 21, 6, 6]
+];
+const MC2_LAYOUT = () => ({
+  w: 131, h: 80,
+  items: Object.fromEntries(MC2_TABLES.map(([id, , x, y, w, h]) => [id, { x, y, w, h }])),
+  decor: [
+    { id: 'dVIP', label: 'VIP', x: 0.5, y: 4, w: 26, h: 35 },
+    { id: 'dBY', label: 'バックヤード', x: 30, y: 0.5, w: 31.5, h: 11.5 },
+    { id: 'dCT', label: 'カウンター', x: 30, y: 15, w: 29, h: 5 }
+  ]
+});
+const MC2_TABLE_LIST = () => MC2_TABLES.map(([id, name]) => ({ id, name }));
+// 名前の末尾が ″ / '' / " / ' で、それを除いた名前の卓があれば「分割席」
+function parentOf(t) {
+  const m = t.name.match(/^(.+?)(″|''|"|')$/); if (!m) return null;
+  const p = C().tables.find(x => x.name === m[1]); return p ? p.id : null;
+}
+const subsOf = tid => C().tables.filter(t => parentOf(t) === tid);
+const visibleTable = t => !parentOf(t) || sess(t.id) || LS.get('showSub', false);
+const DEFAULT_CONFIG = () => ({
+  tables: MC2_TABLE_LIST(),
+  casts: (DB && DB.mode === 'demo' ? ['あい','みく','れな','ゆな','さき','まりあ','ひな','りこ'] : []).map((n, i) => ({ id: 'c' + (i + 1), name: n, active: true })),
+  setOptions: [60, 90, 120],
+  extMin: 30,
+  warnMin: 10,
+  cutoff: 6,
+  layout: MC2_LAYOUT()   // 席配置（座標は w×h のマス目単位）
+});
+function normConfig(c) {
+  const d = DEFAULT_CONFIG();
+  return {
+    tables: vals(c.tables).length ? vals(c.tables) : d.tables,
+    casts: vals(c.casts),
+    setOptions: vals(c.setOptions).map(Number).filter(n => n > 0).length ? vals(c.setOptions).map(Number).filter(n => n > 0) : d.setOptions,
+    extMin: +c.extMin || d.extMin,
+    warnMin: +c.warnMin || d.warnMin,
+    cutoff: c.cutoff == null ? d.cutoff : +c.cutoff,
+    layout: c.layout ? { w: +c.layout.w || 100, h: +c.layout.h || 100, items: c.layout.items || {}, decor: vals(c.layout.decor) } : d.layout
+  };
+}
+// 配置が未設定の卓は、既存の配置の下に自動で並べる
+function layoutOf() {
+  const L = C().layout, items = { ...L.items };
+  const placed = C().tables.filter(t => items[t.id]);
+  let y0 = placed.length ? Math.max(...placed.map(t => items[t.id].y + items[t.id].h)) + 2 : 2, i = 0;
+  C().tables.forEach(t => { if (!items[t.id]) { items[t.id] = { x: 2 + (i % 4) * 24.5, y: y0 + Math.floor(i / 4) * 19, w: 22, h: 17 }; i++; } });
+  const h = Math.max(L.h, ...Object.values(items).map(it => it.y + it.h + 1));
+  return { ...L, h, items };
+}
+const pos = (it, L) => `left:${it.x / L.w * 100}%;top:${it.y / L.h * 100}%;width:${it.w / L.w * 100}%;height:${it.h / L.h * 100}%`;
+const C = () => S.config;
+const activeCasts = () => C().casts.filter(c => c.active !== false);
+const castName = id => { const c = C().casts.find(c => c.id === id); return c ? c.name : '(削除)'; };
+const tableName = tid => { const t = C().tables.find(t => t.id === tid); return t ? t.name : '?'; };
+const sess = tid => { const s = S.tables[tid]; return s && s.sid ? s : null; };
+function bizDate(t) { const d = new Date(t - ((C() ? C().cutoff : 6) * 3600000)); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function stageOf(s, now) {
+  if (!s) return 'empty';
+  if (s.status === 'check') return 'check';
+  const r = s.end - now;
+  if (r <= 0) return 'over';
+  if (r <= C().warnMin * 60000) return 'warn';
+  return 'ok';
+}
+const STAGE_LABEL = { empty: '空席', ok: '着席中', warn: '延長確認', over: '時間超過', check: '会計中' };
+const jonaiList = s => Object.entries(s.jonai || {}).map(([id, j]) => ({ id, ...j })).sort((a, b) => a.at - b.at);
+
+// キャストの現在地（全卓を横断）
+function castWhere(cid) {
+  const w = { hon: [], jon: [], seat: [] };
+  for (const t of C().tables) {
+    const s = sess(t.id); if (!s) continue;
+    if (s.hon && s.hon[cid]) w.hon.push(t.name);
+    if (jonaiList(s).some(j => j.c === cid)) w.jon.push(t.name);
+    if (s.seat && s.seat[cid]) w.seat.push(t.name);
+  }
+  return w;
+}
+
+/* ============ 操作 ============ */
+function log(tid, msg) { DB.push('logs/' + bizDate(DB.now()), { t: DB.now(), tb: tid ? tableName(tid) : '', msg, by: staff }); }
+const A = {
+  open(tid) { unlockAudio(); const s = sess(tid); sheet = { tid, pick: null, q: '', form: s ? null : { guests: 1, setMin: C().setOptions[0], customer: '', hon: {}, seat: {} } }; renderSheet(); },
+  close() { sheet = null; renderSheet(); },
+  tab(t) { tab = t; LS.set('tab', t); window.scrollTo(0, 0); render(); },
+
+  // --- 着席フォーム ---
+  fGuests(d) { sheet.form.guests = Math.max(1, sheet.form.guests + d); renderSheet(); },
+  fSet(m) { sheet.form.setMin = m; renderSheet(); },
+  fSetCustom() { const v = prompt('セット時間（分）', sheet.form.setMin); if (v && +v > 0) { sheet.form.setMin = +v; renderSheet(); } },
+  seat() {
+    const f = sheet.form, tid = sheet.tid;
+    if (sess(tid)) { toast('他の端末で既に着席済みです', 'warn'); sheet.form = null; renderSheet(); return; }
+    const now = DB.now();
+    const s = { sid: rid('s'), start: now, end: now + f.setMin * 60000, setMin: f.setMin, guests: f.guests, customer: f.customer.trim(), hon: f.hon, seat: f.seat, ext: 0, status: 'seated', by: staff };
+    DB.set('tables/' + tid, s);
+    const hn = keys(f.hon).map(castName).join('・');
+    log(tid, `着席 ${f.guests}名 ${f.setMin}分` + (s.customer ? ` (${s.customer}様)` : '') + (hn ? ` 本指名:${hn}` : ''));
+    sheet.form = null;
+  },
+
+  // --- 着席中 ---
+  extend(n) {
+    const tid = sheet.tid, s = sess(tid); if (!s) return;
+    const m = C().extMin * n;
+    DB.incr('tables/' + tid + '/end', m * 60000);
+    DB.incr('tables/' + tid + '/ext', n);
+    if (s.status === 'check') DB.set('tables/' + tid + '/status', 'seated');
+    log(tid, `延長 +${m}分`);
+    toast(`${tableName(tid)} 延長 +${m}分`);
+  },
+  adjust(min) {
+    const tid = sheet.tid; if (!sess(tid)) return;
+    DB.incr('tables/' + tid + '/end', min * 60000);
+    log(tid, `時間調整 ${min > 0 ? '+' : ''}${min}分`);
+  },
+  check() {
+    const tid = sheet.tid, s = sess(tid); if (!s) return;
+    const to = s.status === 'check' ? 'seated' : 'check';
+    DB.set('tables/' + tid + '/status', to);
+    log(tid, to === 'check' ? '会計へ' : '会計取消（着席に戻す）');
+  },
+  guests(d) {
+    const tid = sheet.tid, s = sess(tid); if (!s) return;
+    const g = Math.max(1, (s.guests || 1) + d);
+    DB.set('tables/' + tid + '/guests', g); log(tid, `人数変更 → ${g}名`);
+  },
+  field(name, el) {
+    const tid = sheet.tid, s = sess(tid); if (!s) return;
+    const v = el.value.trim(); if ((s[name] || '') === v) return;
+    DB.set('tables/' + tid + '/' + name, v || null);
+    log(tid, (name === 'customer' ? 'お客様名' : 'メモ') + ` → ${v || '(なし)'}`);
+  },
+  pick(kind) { sheet.pick = kind; sheet.q = ''; renderSheet(); },
+  unpick() { sheet.pick = null; renderSheet(); },
+  pickCast(cid) {
+    const k = sheet.pick, tid = sheet.tid;
+    if (k === 'fhon' || k === 'fseat') {
+      const o = sheet.form[k === 'fhon' ? 'hon' : 'seat'];
+      if (o[cid]) delete o[cid]; else o[cid] = true;
+      renderSheet(); return;
+    }
+    const s = sess(tid); if (!s) return;
+    if (k === 'hon') {
+      const on = !(s.hon && s.hon[cid]);
+      DB.set(`tables/${tid}/hon/${cid}`, on || null);
+      log(tid, `本指名${on ? '追加' : '解除'}: ${castName(cid)}`);
+    } else if (k === 'seat') {
+      const on = !(s.seat && s.seat[cid]);
+      DB.set(`tables/${tid}/seat/${cid}`, on || null);
+      log(tid, `${on ? '着席' : '抜け'}: ${castName(cid)}`);
+    } else if (k === 'jon') {
+      if (jonaiList(s).some(j => j.c === cid) && !confirm(`${castName(cid)} は既にこの卓で場内指名済みです。もう一度追加しますか？`)) return;
+      DB.push(`tables/${tid}/jonai`, { c: cid, at: DB.now(), by: staff });
+      DB.set(`tables/${tid}/seat/${cid}`, true);
+      log(tid, `場内指名: ${castName(cid)}`);
+      toast(`${tableName(tid)} 場内指名 ${castName(cid)}`);
+      sheet.pick = null; renderSheet();
+    }
+  },
+  rmHon(cid) { const tid = sheet.tid; if (!confirm(`本指名「${castName(cid)}」を解除しますか？`)) return; DB.set(`tables/${tid}/hon/${cid}`, null); log(tid, `本指名解除: ${castName(cid)}`); },
+  rmSeat(cid) { const tid = sheet.tid; DB.set(`tables/${tid}/seat/${cid}`, null); log(tid, `抜け: ${castName(cid)}`); },
+  rmJon(jid) {
+    const tid = sheet.tid, s = sess(tid); if (!s || !s.jonai || !s.jonai[jid]) return;
+    const c = s.jonai[jid].c;
+    if (!confirm(`場内指名「${castName(c)}」を取り消しますか？\n（入力ミスの訂正用）`)) return;
+    DB.set(`tables/${tid}/jonai/${jid}`, null); log(tid, `場内指名取消: ${castName(c)}`);
+  },
+  move(to) {
+    const from = sheet.tid, s = sess(from);
+    if (!s) return;
+    if (sess(to)) { toast('移動先が使用中です', 'warn'); return; }
+    if (!confirm(`${tableName(from)} → ${tableName(to)} に移動しますか？`)) return;
+    DB.update('tables', { [to]: s, [from]: null });
+    log(to, `席移動 ${tableName(from)} → ${tableName(to)}`);
+    sheet = { tid: to, pick: null, q: '', form: null }; renderSheet();
+  },
+  leave() {
+    const tid = sheet.tid, s = sess(tid); if (!s) return;
+    if (!confirm(`${tableName(tid)} を退店（会計完了）にしますか？\n席は空席に戻り、記録は履歴に保存されます。`)) return;
+    const now = DB.now();
+    DB.push('history/' + bizDate(s.start), {
+      table: tableName(tid), start: s.start, out: now, guests: s.guests || 1, customer: s.customer || '', memo: s.memo || '',
+      setMin: s.setMin, ext: s.ext || 0,
+      hon: keys(s.hon), honN: keys(s.hon).map(castName),
+      jon: jonaiList(s).map(j => j.c), jonN: jonaiList(s).map(j => castName(j.c) + ' ' + hm(j.at)),
+      by: staff
+    });
+    DB.set('tables/' + tid, null);
+    log(tid, `退店 (滞在${fmtDur(now - s.start)} 延長${s.ext || 0}回)`);
+    sheet = null; renderSheet();
+  },
+
+  // --- 設定 ---
+  saveSettings() {
+    const c = C();
+    const tnames = $('#s-tables').value.split('\n').map(x => x.trim()).filter(Boolean);
+    if (new Set(tnames).size !== tnames.length) return toast('卓名が重複しています', 'warn');
+    const tables = tnames.map(n => (c.tables.find(t => t.name === n) || { id: rid('t'), name: n }));
+    const removed = c.tables.filter(t => !tables.some(x => x.id === t.id) && sess(t.id));
+    if (removed.length) return toast(`使用中の卓は削除できません: ${removed.map(t => t.name).join(',')}`, 'warn');
+    const cnames = $('#s-casts').value.split('\n').map(x => x.trim()).filter(Boolean);
+    if (new Set(cnames).size !== cnames.length) return toast('キャスト名が重複しています', 'warn');
+    const casts = cnames.map(n => { const ex = c.casts.find(x => x.name === n); return ex ? { ...ex, active: true } : { id: rid('c'), name: n, active: true }; });
+    c.casts.forEach(x => { if (!casts.some(y => y.id === x.id)) casts.push({ ...x, active: false }); });
+    const setOptions = $('#s-sets').value.split(/[,、\s]+/).map(Number).filter(n => n > 0);
+    const cfg = { layout: c.layout, tables, casts, setOptions: setOptions.length ? setOptions : [60], extMin: +$('#s-ext').value || 30, warnMin: +$('#s-warn').value || 10, cutoff: Math.min(12, Math.max(0, +$('#s-cut').value || 0)) };
+    DB.set('config', cfg);
+    log(null, '設定を変更');
+    toast('設定を保存しました（全端末に反映）');
+  },
+  saveStaff() { const v = $('#s-staff').value.trim(); if (!v) return; staff = v; LS.set('staff', v); toast('名前を変更しました'); render(); },
+  sound(on) { LS.set('sound', on); if (on) { unlockAudio(); beep('warn'); } render(); },
+  logout() { if (!confirm('ログアウトしますか？')) return; LS.del('code'); location.reload(); },
+  csv() {
+    const rows = [['卓', 'IN', 'OUT', '滞在', '人数', 'お客様', '本指名', '場内指名', 'セット(分)', '延長回数', 'メモ', '担当']];
+    histList().forEach(h => rows.push([h.table, hm(h.start), hm(h.out), fmtDur(h.out - h.start), h.guests, h.customer, (h.honN || []).join(' / '), (h.jonN || []).join(' / '), h.setMin, h.ext, h.memo || '', h.by]));
+    const csv = '﻿' + rows.map(r => r.map(v => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(',')).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `MC2_${curBiz}.csv`; a.click();
+  },
+  view(v) { LS.set('view', v); render(); },
+  showSub() { LS.set('showSub', !LS.get('showSub', false)); render(); },
+  fit() { LS.set('mapFit', !LS.get('mapFit', true)); render(); },
+  portraitOk() { document.body.classList.add('np'); },
+  landscape() {
+    const el = document.documentElement;
+    Promise.resolve(el.requestFullscreen && el.requestFullscreen()).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => toast('この端末では自動で横向きにできません。端末を横にしてください', 'warn'));
+  },
+  loadMC2() {
+    const keep = MC2_TABLE_LIST(), busy = C().tables.filter(t => sess(t.id) && !keep.some(k => k.id === t.id));
+    if (busy.length) return toast(`使用中の卓があるため読み込めません: ${busy.map(t => t.name).join(',')}`, 'warn');
+    if (!confirm('卓の一覧と席配置を MC2 標準に置き換えます。よろしいですか？\n（キャスト・履歴はそのまま）')) return;
+    DB.update('config', { tables: keep, layout: MC2_LAYOUT() });
+    log(null, '卓・席配置を MC2 標準に戻した');
+    toast('MC2 標準の卓・席配置を読み込みました');
+    const s = $('#s-tables'); if (s) s.value = keep.map(t => t.name).join('\n');
+  },
+
+  // --- 席配置の編集 ---
+  editMap() { editLayout = clone(layoutOf()); selItem = null; tab = 'board'; LS.set('tab', 'board'); window.scrollTo(0, 0); renderEditor(); render(); },
+  cancelMap() { editLayout = null; render(); },
+  saveMap() { DB.set('config/layout', editLayout); log(null, '席配置を変更'); editLayout = null; toast('席配置を保存しました（全端末に反映）'); render(); },
+  addDecor() {
+    const l = prompt('名前（入口・カウンター・レジ・トイレ・柱・キッチンなど）'); if (!l) return;
+    const id = rid('d'); editLayout.decor.push({ id, label: l.trim(), x: 2, y: 2, w: 20, h: 8 }); selItem = id; renderEditor();
+  },
+  renameDecor() { const d = editLayout.decor.find(x => x.id === selItem); if (!d) return; const l = prompt('名前', d.label); if (l) { d.label = l.trim(); renderEditor(); } },
+  delDecor() { editLayout.decor = editLayout.decor.filter(x => x.id !== selItem); selItem = null; renderEditor(); },
+  mapSize(dw, dh) {
+    const L = editLayout, its = [...Object.values(L.items), ...L.decor];
+    L.w = Math.max(40, Math.max(L.w + dw, ...its.map(i => i.x + i.w)));
+    L.h = Math.max(30, Math.max(L.h + dh, ...its.map(i => i.y + i.h)));
+    renderEditor();
+  },
+  q(el) { sheet.q = el.value; renderPickGrid(); },
+  castQ(el) { castQuery = el.value; renderCastList(); }
+};
+let castQuery = '';
+let editLayout = null, selItem = null;
+
+/* ============ 通知（音・バイブ・トースト） ============ */
+let actx = null;
+function unlockAudio() { try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {} reqWake(); }
+function beep(kind) {
+  if (!LS.get('sound', true) || !actx) return;
+  const seq = kind === 'over' ? [880, 660, 880, 660] : [740, 990];
+  seq.forEach((f, i) => {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = f; o.type = 'square'; g.gain.value = 0.08;
+    o.connect(g); g.connect(actx.destination);
+    const t = actx.currentTime + i * 0.22; o.start(t); o.stop(t + 0.16);
+  });
+}
+function toast(msg, kind = '') {
+  const el = document.createElement('div'); el.className = 'toast ' + kind; el.textContent = msg;
+  $('#toasts').appendChild(el); setTimeout(() => el.remove(), kind ? 6000 : 2500);
+}
+function notify(tid, st) {
+  const msg = st === 'warn' ? `⏰ ${tableName(tid)} 残り${C().warnMin}分（延長確認）` : `🚨 ${tableName(tid)} 時間超過`;
+  toast(msg, st); beep(st);
+  try { navigator.vibrate && navigator.vibrate(st === 'over' ? [300, 100, 300, 100, 300] : [200, 100, 200]); } catch (e) {}
+}
+let wake = null;
+async function reqWake() { try { if (navigator.wakeLock && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch (e) {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reqWake(); });
+
+/* ============ 描画 ============ */
+let rq = false;
+function render() { if (rq) return; rq = true; requestAnimationFrame(() => { rq = false; renderNow(); }); }
+function renderNow() {
+  if (!DB) return;
+  if (!C()) { $('#app').innerHTML = '<div class="login"><p>データを読み込み中…</p></div>'; return; }
+  const tabs = [['board', '▦', 'テーブル'], ['cast', '♛', 'キャスト'], ['hist', '≡', '履歴'], ['set', '⚙', '設定']];
+  if (!$('#main')) {
+    $('#app').innerHTML = `
+      ${DB.mode === 'demo' ? '<div class="demo">デモモード：この端末のブラウザ内だけで同期中（他端末と共有するには Firebase 設定が必要）</div>' : ''}
+      <header><span class="logo">MC2</span><span class="conn"><span class="dot" id="dot"></span><span id="connTxt"></span></span>
+      <span class="clock" id="clock"></span><span class="who" id="who"></span></header>
+      <main id="main"></main><div id="sheetWrap"></div>
+      <nav id="nav"></nav>
+      <div id="rotate"><div style="font-size:54px">📱↻</div><b>端末を横向きにしてください</b><p>MC2 テーブル管理は横画面専用です</p>
+        <button class="btn gold" onclick="A.landscape()">全画面で横向きにする（Android）</button>
+        <button class="btn" onclick="A.portraitOk()">このまま縦で使う</button></div>`;
+  }
+  $('#who').textContent = staff;
+  $('#nav').innerHTML = `<div class="rail-top"><span class="logo">MC2</span><span class="dot" id="dot2"></span><span class="clock" id="clock2"></span></div>` + tabs.map(([k, i, l]) => `<button class="${tab === k ? 'on' : ''}" onclick="A.tab('${k}')"><b>${i}</b>${l}</button>`).join('');
+  setConn();
+  const m = $('#main');
+  if (tab === 'board') { if (editLayout) { if (!$('#map.editing')) renderEditor(); } else m.innerHTML = viewBoard(); }
+  else if (tab === 'cast') { if (!$('#castList')) m.innerHTML = viewCastShell(); renderCastList(); }
+  else if (tab === 'hist') m.innerHTML = viewHist();
+  else if (tab === 'set') { if (!$('#s-tables')) m.innerHTML = viewSet(); }  // 編集中の内容を他端末の更新で消さない
+  renderSheet(true);
+  tickClock();
+}
+function setConn() {
+  const d = $('#dot'); if (!d) return;
+  d.className = 'dot' + (online ? ' on' : '');
+  const d2 = $('#dot2'); if (d2) d2.className = d.className;
+  $('#connTxt').textContent = online ? (DB.mode === 'demo' ? 'デモ' : '同期中') : 'オフライン';
+}
+
+function viewBoard() {
+  const now = DB.now(), mode = LS.get('view', 'map');
+  const ts = C().tables.filter(visibleTable), mainCount = C().tables.filter(t => !parentOf(t)).length;
+  let used = 0, guests = 0, over = 0;
+  ts.forEach(t => { const s = sess(t.id); if (s) { used++; guests += +s.guests || 0; const st = stageOf(s, now); if (st === 'over' || st === 'warn') over++; } });
+  const busy = activeCasts().filter(c => { const w = castWhere(c.id); return w.seat.length; }).length;
+  return `<div class="viewbar"><div class="seg"><button class="${mode === 'map' ? 'on' : ''}" onclick="A.view('map')">マップ</button><button class="${mode === 'list' ? 'on' : ''}" onclick="A.view('list')">一覧</button></div>
+    <span class="kpi">使用 <b>${used}</b>/${mainCount}卓</span><span class="kpi">客 <b>${guests}</b>名</span>
+    <span class="kpi ${over ? 'alert' : ''}">要対応 <b>${over}</b></span><span class="kpi">待機 <b>${activeCasts().length - busy}</b>/${activeCasts().length}名</span>
+    <span style="margin-left:auto;display:flex;gap:4px">
+      <button class="btn sm ${LS.get('showSub', false) ? 'gold' : ''}" onclick="A.showSub()">分割席″${LS.get('showSub', false) ? '表示中' : ''}</button>
+      ${mode === 'map' ? `<button class="btn sm" onclick="A.fit()">${LS.get('mapFit', true) ? '拡大' : '全体'}</button><button class="btn sm" onclick="A.editMap()">配置</button>` : ''}</span></div>
+  ${mode === 'map' ? viewMap(now) : `<div class="grid">${ts.map(t => cardHtml(t, now)).join('')}</div>`}`;
+}
+function viewMap(now) {
+  const L = layoutOf();
+  return `<div class="mapwrap"><div class="map ${LS.get('mapFit', true) ? 'fit' : ''}" style="aspect-ratio:${L.w}/${L.h};--ar:${L.w / L.h}">
+    ${L.decor.map(d => `<div class="decor" style="${pos(d, L)}">${esc(d.label)}</div>`).join('')}
+    ${C().tables.filter(visibleTable).map(t => mapCardHtml(t, L.items[t.id], L, now)).join('')}
+  </div></div>`;
+}
+function mapCardHtml(t, it, L, now) {
+  const s = sess(t.id), st = stageOf(s, now);
+  const head = `<div class="mn"><span>${esc(t.name)}</span><span class="badge">${STAGE_LABEL[st]}</span></div>`;
+  const base = parentOf(t) ? 'mt sub' : 'mt';  // 分割席は図面どおり丸く表示
+  if (!s) return `<div class="${base} st-empty" data-card="${t.id}" data-base="${base}" style="${pos(it, L)}" onclick="A.open('${t.id}')">${head}<div class="et">空席</div></div>`;
+  const hon = keys(s.hon).map(castName), jon = jonaiList(s).map(j => castName(j.c)), seat = keys(s.seat).map(castName);
+  return `<div class="${base} st-${st}" data-card="${t.id}" data-base="${base}" style="${pos(it, L)}" onclick="A.open('${t.id}')">${head}
+    <div class="timer" data-timer="${t.id}">${fmtRemain(s.end - now)}</div>
+    ${hon.length ? `<div class="row"><span class="lbl l-hon">本</span>${esc(hon.join('、'))}</div>` : ''}
+    ${jon.length ? `<div class="row"><span class="lbl l-jon">場</span>${esc(jon.join('、'))}</div>` : ''}
+    ${seat.length ? `<div class="row"><span class="lbl l-seat">付</span>${esc(seat.join('、'))}</div>` : ''}
+    <div class="row" style="color:var(--muted)">${s.guests || 1}名${s.ext ? '・延' + s.ext : ''}${s.customer ? '・' + esc(s.customer) : ''}</div>
+  </div>`;
+}
+
+/* ---- 席配置エディタ ---- */
+function edItem(id) { return editLayout.items[id] || editLayout.decor.find(d => d.id === id); }
+function renderEditor() {
+  const m = $('#main'); if (!m || !editLayout || tab !== 'board') return;
+  const L = editLayout;
+  C().tables.forEach(t => { if (!L.items[t.id]) L.items[t.id] = { x: 0, y: 0, w: 22, h: 17 }; });  // 編集中に他端末で卓が追加された場合
+  m.innerHTML = `<div class="edbar"><b>席配置の編集中</b>：ドラッグで移動、右下の■で大きさ変更。保存すると全端末に反映されます。
+    <div id="edinfo"></div>
+    <div class="chips"><button class="btn sm" onclick="A.addDecor()">＋入口・カウンター等</button>
+      <button class="btn sm" onclick="A.mapSize(10,0)">横を広げる</button><button class="btn sm" onclick="A.mapSize(-10,0)">横を狭める</button>
+      <button class="btn sm" onclick="A.mapSize(0,10)">縦を広げる</button><button class="btn sm" onclick="A.mapSize(0,-10)">縦を狭める</button></div>
+    <div class="chips"><button class="btn sm gold" onclick="A.saveMap()">保存</button><button class="btn sm" onclick="A.cancelMap()">やめる</button></div></div>
+  <div class="mapwrap"><div class="map editing" id="map" style="aspect-ratio:${L.w}/${L.h}">
+    ${L.decor.map(d => `<div class="ei dec ${selItem === d.id ? 'sel' : ''}" data-id="${d.id}" style="${pos(d, L)}">${esc(d.label)}<div class="rh"></div></div>`).join('')}
+    ${C().tables.map(t => `<div class="ei ${parentOf(t) ? 'sub' : ''} ${selItem === t.id ? 'sel' : ''}" data-id="${t.id}" style="${pos(L.items[t.id], L)}">${esc(t.name)}<div class="rh"></div></div>`).join('')}
+  </div></div>`;
+  updateEdInfo();
+  $('#map').onpointerdown = e => {
+    const el = e.target.closest('.ei'); if (!el) return;
+    e.preventDefault();
+    const id = el.dataset.id, it = edItem(id), resize = e.target.classList.contains('rh');
+    selItem = id; m.querySelectorAll('.ei').forEach(x => x.classList.toggle('sel', x === el)); updateEdInfo();
+    const r = $('#map').getBoundingClientRect(), ux = r.width / L.w, uy = r.height / L.h;
+    const sx = e.clientX, sy = e.clientY, o = { ...it };
+    const mv = ev => {
+      const dx = Math.round((ev.clientX - sx) / ux), dy = Math.round((ev.clientY - sy) / uy);
+      if (resize) { it.w = Math.max(4, Math.min(L.w - it.x, o.w + dx)); it.h = Math.max(3, Math.min(L.h - it.y, o.h + dy)); }
+      else { it.x = Math.max(0, Math.min(L.w - it.w, o.x + dx)); it.y = Math.max(0, Math.min(L.h - it.h, o.y + dy)); }
+      el.setAttribute('style', pos(it, L));
+    };
+    const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  };
+}
+function updateEdInfo() {
+  const el = $('#edinfo'); if (!el) return;
+  const d = editLayout.decor.find(x => x.id === selItem);
+  el.innerHTML = d ? `<div class="chips"><span>選択中：${esc(d.label)}</span><button class="btn sm" onclick="A.renameDecor()">名前変更</button><button class="btn sm red" onclick="A.delDecor()">削除</button></div>` : '';
+}
+function cardHtml(t, now) {
+  const s = sess(t.id), st = stageOf(s, now);
+  if (!s) return `<div class="card st-empty" data-card="${t.id}" onclick="A.open('${t.id}')"><div class="ct"><span class="tname">${esc(t.name)}</span><span class="badge">空席</span></div><div class="empty-txt">空席</div></div>`;
+  const hon = keys(s.hon).map(castName), jon = jonaiList(s).map(j => castName(j.c)), seat = keys(s.seat).map(castName);
+  return `<div class="card st-${st}" data-card="${t.id}" onclick="A.open('${t.id}')">
+    <div class="ct"><span class="tname">${esc(t.name)}</span><span class="badge">${STAGE_LABEL[st]}</span></div>
+    <div class="timer" data-timer="${t.id}">${fmtRemain(s.end - now)}</div>
+    <div class="sub">${hm(s.start)}→${hm(s.end)}・${s.guests || 1}名${s.ext ? '・延長' + s.ext : ''}${s.customer ? '・' + esc(s.customer) : ''}</div>
+    ${hon.length ? `<div class="row"><span class="lbl l-hon">本</span>${esc(hon.join('、'))}</div>` : ''}
+    ${jon.length ? `<div class="row"><span class="lbl l-jon">場</span>${esc(jon.join('、'))}</div>` : ''}
+    ${seat.length ? `<div class="row"><span class="lbl l-seat">付</span>${esc(seat.join('、'))}</div>` : ''}
+  </div>`;
+}
+
+function renderSheet(fromData) {
+  const w = $('#sheetWrap'); if (!w) return;
+  if (!sheet) { w.innerHTML = ''; return; }
+  // 入力中は他端末からの更新で入力欄を壊さない
+  if (fromData && w.contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  const tid = sheet.tid, t = C().tables.find(x => x.id === tid);
+  if (!t) { sheet = null; w.innerHTML = ''; return; }
+  const s = sess(tid);
+  // 自分がフォームを開いている間に他端末で着席された場合
+  if (s && sheet.form) { sheet.form = null; if (sheet.pick && sheet.pick.startsWith('f')) sheet.pick = null; toast(`${t.name} は他の端末で着席されました`, 'warn'); }
+  if (!s && !sheet.form) { sheet.form = { guests: 1, setMin: C().setOptions[0], customer: '', hon: {}, seat: {} }; if (sheet.pick && !sheet.pick.startsWith('f')) sheet.pick = null; }
+  let body;
+  if (sheet.pick) body = viewPicker(s);
+  else if (!s) body = viewSeatForm(t);
+  else body = viewSession(t, s);
+  w.innerHTML = `<div class="mask" onclick="A.close()"></div><div class="sheet" id="sheet">${body}</div>`;
+  if (sheet.pick) renderPickGrid();
+}
+function viewSeatForm(t) {
+  const f = sheet.form;
+  const opts = C().setOptions;
+  return `<div class="sh-head"><h2>${esc(t.name)}</h2><span class="badge">空席</span><button class="x" onclick="A.close()">×</button></div>
+  <div class="field"><label>人数</label><div class="stepper"><button onclick="A.fGuests(-1)">−</button><b>${f.guests}</b><button onclick="A.fGuests(1)">＋</button><span style="color:var(--muted)">名</span></div></div>
+  <div class="field"><label>セット時間</label><div class="seg">${opts.map(m => `<button class="${f.setMin === m ? 'on' : ''}" onclick="A.fSet(${m})">${m}分</button>`).join('')}
+    <button class="${opts.includes(f.setMin) ? '' : 'on'}" onclick="A.fSetCustom()">${opts.includes(f.setMin) ? 'その他' : f.setMin + '分'}</button></div></div>
+  <div class="field"><label>お客様名（任意）</label><input id="f-cust" value="${esc(f.customer)}" oninput="sheet.form.customer=this.value" placeholder="例：山田様"></div>
+  <div class="sec"><h3>本指名<button class="btn sm add" onclick="A.pick('fhon')">選択</button></h3>
+    <div class="chips">${keys(f.hon).map(c => `<span class="chip hon">${esc(castName(c))}</span>`).join('') || '<span class="none">なし（フリー）</span>'}</div></div>
+  <div class="sec"><h3>最初に付くキャスト<button class="btn sm add" onclick="A.pick('fseat')">選択</button></h3>
+    <div class="chips">${keys(f.seat).map(c => `<span class="chip seat">${esc(castName(c))}</span>`).join('') || '<span class="none">未選択</span>'}</div></div>
+  ${subSec(t.id)}
+  <button class="btn gold wide" onclick="A.seat()">着席スタート（${f.setMin}分）</button>`;
+}
+// 分割席への入口（親の卓の画面に表示）と、分割席から親へ戻るボタン
+function subSec(tid) {
+  const subs = subsOf(tid), p = parentOf(C().tables.find(x => x.id === tid));
+  if (p) return `<div class="sec"><h3>分割席（${esc(tableName(p))} の分割）</h3><button class="btn sm" onclick="A.open('${p}')">${esc(tableName(p))} を開く</button></div>`;
+  if (!subs.length) return '';
+  return `<div class="sec"><h3>分割席（繁忙時）</h3><div class="chips">${subs.map(x => `<button class="btn sm ${sess(x.id) ? 'gold' : ''}" onclick="A.open('${x.id}')">${esc(x.name)} ${sess(x.id) ? '使用中' : 'を使う'}</button>`).join('')}</div></div>`;
+}
+function viewSession(t, s) {
+  const now = DB.now(), st = stageOf(s, now), jl = jonaiList(s);
+  const empties = C().tables.filter(x => !sess(x.id));
+  return `<div class="sh-head"><h2>${esc(t.name)}</h2><span class="badge" style="background:#333">${STAGE_LABEL[st]}</span><button class="x" onclick="A.close()">×</button></div>
+  <div class="bigtimer" data-timer="${t.id}" data-st="${st}">${fmtRemain(s.end - now)}</div>
+  <div class="meta">IN ${hm(s.start)} → OUT ${hm(s.end)}・経過 ${fmtDur(now - s.start)}・セット${s.setMin}分${s.ext ? '・延長' + s.ext + '回' : ''}<br>着席操作: ${esc(s.by || '')}</div>
+  <div class="btns">
+    <button class="btn gold" onclick="A.extend(1)">延長<br>+${C().extMin}分</button>
+    <button class="btn" onclick="A.adjust(5)">+5分</button>
+    <button class="btn" onclick="A.adjust(-5)">−5分</button>
+    <button class="btn ${s.status === 'check' ? '' : 'blue'}" onclick="A.check()">${s.status === 'check' ? '会計<br>取消' : '会計へ'}</button>
+  </div>
+  <div class="sec"><h3><span class="lbl l-hon">本</span>本指名<button class="btn sm add" onclick="A.pick('hon')">＋追加</button></h3>
+    <div class="chips">${keys(s.hon).map(c => `<span class="chip hon">${esc(castName(c))}<button class="rm" onclick="A.rmHon('${c}')">×</button></span>`).join('') || '<span class="none">なし（フリー）</span>'}</div></div>
+  <div class="sec"><h3><span class="lbl l-jon">場</span>場内指名 ${jl.length ? jl.length + '件' : ''}<button class="btn sm add" onclick="A.pick('jon')">＋場内指名</button></h3>
+    <div class="chips">${jl.map(j => `<span class="chip jon">${esc(castName(j.c))} <small>${hm(j.at)}</small><button class="rm" onclick="A.rmJon('${j.id}')">×</button></span>`).join('') || '<span class="none">なし</span>'}</div></div>
+  <div class="sec"><h3><span class="lbl l-seat">付</span>今ついているキャスト<button class="btn sm add" onclick="A.pick('seat')">付け回し</button></h3>
+    <div class="chips">${keys(s.seat).map(c => `<span class="chip seat">${esc(castName(c))}<button class="rm" onclick="A.rmSeat('${c}')">抜</button></span>`).join('') || '<span class="none">誰もついていません</span>'}</div></div>
+  <div class="sec">
+    <div class="field"><label>人数</label><div class="stepper"><button onclick="A.guests(-1)">−</button><b>${s.guests || 1}</b><button onclick="A.guests(1)">＋</button><span style="color:var(--muted)">名</span></div></div>
+    <div class="field"><label>お客様名</label><input value="${esc(s.customer || '')}" onchange="A.field('customer',this)" placeholder="例：山田様"></div>
+    <div class="field"><label>メモ（全員に共有）</label><textarea onchange="A.field('memo',this)" placeholder="ボトル・注意事項など">${esc(s.memo || '')}</textarea></div>
+  </div>
+  ${subSec(t.id)}
+  <div class="sec"><h3>席移動</h3><div class="chips">${empties.map(x => `<button class="btn sm" onclick="A.move('${x.id}')">${esc(x.name)}へ</button>`).join('') || '<span class="none">空席なし</span>'}</div></div>
+  <button class="btn red wide" style="margin-top:6px" onclick="A.leave()">退店（会計完了）</button>`;
+}
+const PICK_TITLE = { hon: '本指名を追加／解除', jon: '場内指名するキャスト', seat: '付け回し（着席／抜け）', fhon: '本指名を選択', fseat: '最初に付くキャストを選択' };
+function viewPicker() {
+  return `<div class="sh-head"><button class="btn sm" onclick="A.unpick()">← 戻る</button><h2 style="font-size:17px">${PICK_TITLE[sheet.pick]}</h2></div>
+  <input placeholder="名前で検索" value="${esc(sheet.q)}" oninput="A.q(this)">
+  <div class="pgrid" id="pgrid"></div>
+  ${sheet.pick === 'jon' ? '' : '<button class="btn gold wide" style="margin-top:12px" onclick="A.unpick()">決定</button>'}
+  ${activeCasts().length ? '' : '<p class="help">キャストが未登録です。「設定」タブで登録してください。</p>'}`;
+}
+function renderPickGrid() {
+  const g = $('#pgrid'); if (!g || !sheet) return;
+  const k = sheet.pick, s = sess(sheet.tid), q = sheet.q.trim();
+  const sel = id => k === 'fhon' ? sheet.form.hon[id] : k === 'fseat' ? sheet.form.seat[id] : k === 'hon' ? s && s.hon && s.hon[id] : k === 'seat' ? s && s.seat && s.seat[id] : false;
+  g.innerHTML = activeCasts().filter(c => !q || c.name.includes(q)).map(c => {
+    const w = castWhere(c.id);
+    const hint = w.seat.length ? '着席:' + w.seat.join(',') : w.hon.length ? '本指名:' + w.hon.join(',') : '待機';
+    return `<button class="pc ${sel(c.id) ? 'sel' : ''} ${w.seat.length ? 'busy' : ''}" onclick="A.pickCast('${c.id}')">${esc(c.name)}<small>${esc(hint)}</small></button>`;
+  }).join('');
+}
+
+function viewCastShell() {
+  return `<input class="search" placeholder="キャスト名で検索" value="${esc(castQuery)}" oninput="A.castQ(this)">
+  <div class="list" id="castList"></div>
+  <p class="help"><span class="lbl l-hon">本</span>本指名 <span class="lbl l-jon">場</span>場内指名 <span class="lbl l-seat">付</span>現在着席中 ／ 右側は本日の累計（本指名組数・場内指名数）</p>`;
+}
+function todayCounts() {
+  const cnt = {};
+  const add = (id, k) => { cnt[id] = cnt[id] || { hon: 0, jon: 0 }; cnt[id][k]++; };
+  histList().forEach(h => { (h.hon || []).forEach(id => add(id, 'hon')); (h.jon || []).forEach(id => add(id, 'jon')); });
+  C().tables.forEach(t => { const s = sess(t.id); if (s && bizDate(s.start) === curBiz) { keys(s.hon).forEach(id => add(id, 'hon')); jonaiList(s).forEach(j => add(j.c, 'jon')); } });
+  return cnt;
+}
+function renderCastList() {
+  const el = $('#castList'); if (!el) return;
+  const cnt = todayCounts(), q = castQuery.trim();
+  const rows = activeCasts().filter(c => !q || c.name.includes(q)).map(c => ({ c, w: castWhere(c.id), n: cnt[c.id] || { hon: 0, jon: 0 } }));
+  rows.sort((a, b) => (b.w.seat.length ? 1 : 0) - (a.w.seat.length ? 1 : 0));
+  el.innerHTML = rows.map(({ c, w, n }) => `<div class="castrow">
+    <span class="nm">${esc(c.name)}</span>
+    <span class="state ${w.seat.length ? 'busy' : 'free'}">${w.seat.length ? '接客中' : '待機'}</span>
+    <span class="where">${w.seat.length ? `<span class="lbl l-seat">付</span>${esc(w.seat.join(','))} ` : ''}${w.hon.length ? `<span class="lbl l-hon">本</span>${esc(w.hon.join(','))} ` : ''}${w.jon.length ? `<span class="lbl l-jon">場</span>${esc(w.jon.join(','))}` : ''}</span>
+    <span class="cnt">本 ${n.hon}<br>場 ${n.jon}</span></div>`).join('') || '<div class="li"><span class="m none">キャストが未登録です（設定タブで登録）</span></div>';
+}
+
+function histList() { return Object.values(S.history || {}).sort((a, b) => b.out - a.out); }
+function viewHist() {
+  const hs = histList(), cnt = todayCounts();
+  const groups = hs.length, guests = hs.reduce((a, h) => a + (+h.guests || 0), 0), ext = hs.reduce((a, h) => a + (+h.ext || 0), 0);
+  const jonTotal = hs.reduce((a, h) => a + (h.jon || []).length, 0);
+  const rank = activeCasts().map(c => ({ c, n: cnt[c.id] || { hon: 0, jon: 0 } })).filter(x => x.n.hon || x.n.jon).sort((a, b) => (b.n.hon * 100 + b.n.jon) - (a.n.hon * 100 + a.n.jon));
+  const logs = Object.values(S.logs || {}).sort((a, b) => b.t - a.t);
+  return `<div class="stats">
+    <div class="stat"><small>退店組数</small><b>${groups}</b></div>
+    <div class="stat"><small>退店客数</small><b>${guests}</b></div>
+    <div class="stat"><small>延長回数</small><b>${ext}</b></div>
+    <div class="stat"><small>場内指名</small><b>${jonTotal}</b></div></div>
+  <div style="display:flex;align-items:center"><span style="color:var(--muted);font-size:12px">営業日 ${curBiz}（${C().cutoff}時切替）</span><button class="btn sm" style="margin-left:auto" onclick="A.csv()">CSV出力</button></div>
+  <h4>キャスト別（本日・在店中含む）</h4>
+  <div class="list"><table class="rk"><tr><th>キャスト</th><th style="text-align:right">本指名組</th><th style="text-align:right">場内指名</th></tr>
+  ${rank.map(r => `<tr><td>${esc(r.c.name)}</td><td class="n">${r.n.hon}</td><td class="n">${r.n.jon}</td></tr>`).join('') || '<tr><td colspan="3" class="none">まだ記録がありません</td></tr>'}</table></div>
+  <h4>退店済みテーブル</h4>
+  <div class="list">${hs.map(h => `<div class="li"><span class="t">${hm(h.start)}<br>${hm(h.out)}</span><span class="m"><b>${esc(h.table)}</b> ${h.guests}名 ${esc(h.customer || '')} ・滞在${fmtDur(h.out - h.start)}${h.ext ? '・延長' + h.ext : ''}
+    ${(h.honN || []).length ? `<br><span class="lbl l-hon">本</span>${esc(h.honN.join('、'))}` : ''}
+    ${(h.jonN || []).length ? `<br><span class="lbl l-jon">場</span>${esc(h.jonN.join('、'))}` : ''}
+    ${h.memo ? `<br><span class="by">メモ: ${esc(h.memo)}</span>` : ''}</span></div>`).join('') || '<div class="li"><span class="m none">なし</span></div>'}</div>
+  <h4>操作ログ（誰が・いつ・何をしたか）</h4>
+  <div class="list">${logs.slice(0, 300).map(l => `<div class="li"><span class="t">${hm(l.t)}</span><span class="m">${l.tb ? '<b>' + esc(l.tb) + '</b> ' : ''}${esc(l.msg)}</span><span class="by">${esc(l.by)}</span></div>`).join('') || '<div class="li"><span class="m none">なし</span></div>'}</div>`;
+}
+
+function viewSet() {
+  const c = C();
+  return `<h4>あなたの名前（この端末）</h4>
+  <div style="display:flex;gap:8px"><input id="s-staff" value="${esc(staff)}"><button class="btn" onclick="A.saveStaff()">変更</button></div>
+  <h4>通知音（この端末）</h4>
+  <div class="seg"><button class="${LS.get('sound', true) ? 'on' : ''}" onclick="A.sound(true)">ON</button><button class="${LS.get('sound', true) ? '' : 'on'}" onclick="A.sound(false)">OFF</button></div>
+  <p class="help">残り${c.warnMin}分と時間超過で音・バイブ・画面通知が出ます。iPhoneは消音スイッチOFF＆一度画面をタップしてから有効になります。</p>
+  <h4>店舗共通の設定（全端末に反映）</h4>
+  <div class="field"><label>テーブル（1行に1卓・上から表示順）</label><textarea id="s-tables" rows="8">${esc(c.tables.map(t => t.name).join('\n'))}</textarea></div>
+  <div class="field"><label>在籍キャスト（1行に1名・上から表示順）</label><textarea id="s-casts" rows="10" placeholder="あい&#10;みく&#10;れな">${esc(activeCasts().map(x => x.name).join('\n'))}</textarea>
+    <p class="help">名前を消しても過去の記録は残ります。名前を変えると別人扱いになります。</p></div>
+  <div class="two">
+    <div class="field"><label>セット時間の選択肢（分・カンマ区切り）</label><input id="s-sets" value="${esc(c.setOptions.join(','))}"></div>
+    <div class="field"><label>延長1回の時間（分）</label><input id="s-ext" type="number" value="${c.extMin}"></div>
+    <div class="field"><label>延長確認の通知（残り何分）</label><input id="s-warn" type="number" value="${c.warnMin}"></div>
+    <div class="field"><label>営業日の切替時刻（時）</label><input id="s-cut" type="number" value="${c.cutoff}"></div>
+  </div>
+  <button class="btn gold wide" onclick="A.saveSettings()">店舗設定を保存</button>
+  <button class="btn wide" style="margin-top:8px" onclick="A.editMap()">席配置（テーブルマップ）を編集</button>
+  <button class="btn wide" style="margin-top:8px" onclick="A.loadMC2()">卓・席配置を MC2 標準に戻す</button>
+  <p class="help">卓名の最後に「″」を付けると分割席（例：T2″ は T2 の分割席）。分割席は使用中のときだけ表示され、親の卓の画面から開けます。</p>
+  <h4>接続</h4>
+  <p class="help">モード：${DB.mode === 'demo' ? 'デモ（この端末のみ）' : 'Firebase リアルタイム同期'}<br>同じ「店舗コード」でログインした端末どうしで共有されます。</p>
+  <button class="btn wide" style="margin-top:8px" onclick="A.logout()">ログアウト（店舗コードを入れ直す）</button>`;
+}
+
+/* ============ タイマー ============ */
+function tickClock() {
+  if (!DB) return;
+  const d = new Date(DB.now()), c = $('#clock'), c2 = $('#clock2');
+  if (c) c.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  if (c2) c2.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+function tick() {
+  if (!DB || !C()) return;
+  tickClock();
+  subscribeBiz();
+  const now = DB.now();
+  document.querySelectorAll('[data-timer]').forEach(el => {
+    const s = sess(el.dataset.timer); if (!s) return;
+    const st = stageOf(s, now);
+    el.textContent = fmtRemain(s.end - now);
+    el.dataset.st = st;
+    const card = el.closest('[data-card]');
+    const cls = (card && card.dataset.base || 'card') + ' st-' + st;
+    if (card && card.className !== cls) { card.className = cls; card.querySelector('.badge').textContent = STAGE_LABEL[st]; }
+  });
+  // 段階が変わった瞬間だけ通知（ページを開いた時点の状態では鳴らさない）
+  C().tables.forEach(t => {
+    const s = sess(t.id); if (!s) return;
+    const st = stageOf(s, now), prev = alerted[s.sid];
+    if (prev === undefined) { alerted[s.sid] = st; return; }
+    if (st !== prev) { alerted[s.sid] = st; if (st === 'warn' || st === 'over') notify(t.id, st); }
+  });
+}
+function subscribeBiz() {
+  const b = bizDate(DB.now()); if (b === curBiz) return;
+  curBiz = b; unsubBiz.forEach(f => f());
+  unsubBiz = [
+    DB.on('logs/' + b, v => { S.logs = v || {}; if (tab === 'hist') render(); }),
+    DB.on('history/' + b, v => { S.history = v || {}; if (tab !== 'board') render(); })
+  ];
+}
+
+/* ============ 起動 ============ */
+function viewLogin(err) {
+  $('#app').innerHTML = `<div class="login">
+    <h1>MC2</h1><p>テーブル管理 ${FIREBASE_CONFIG ? '' : '（デモモード）'}</p>
+    <div class="field"><label>店舗コード（黒服全員で同じものを使用）</label><input id="l-code" type="password" autocomplete="off" value="${esc(LS.get('code', ''))}" placeholder="8文字以上"></div>
+    <div class="field"><label>あなたの名前</label><input id="l-name" value="${esc(staff)}" placeholder="例：たかし"></div>
+    ${err ? `<p style="color:var(--red);font-size:13px">${esc(err)}</p>` : ''}
+    <button class="btn gold wide" onclick="login()">はじめる</button>
+    <p class="help" style="margin-top:14px">店舗コードは店の合言葉です。知っている人だけがデータを見られます。推測されにくいものにしてください。</p></div>`;
+}
+async function login() {
+  const code = $('#l-code').value.trim(), name = $('#l-name').value.trim();
+  if (code.length < 8) return viewLogin('店舗コードは8文字以上にしてください');
+  if (!name) return viewLogin('名前を入力してください');
+  LS.set('code', code); LS.set('staff', name); staff = name;
+  unlockAudio();
+  boot();
+}
+async function boot() {
+  const code = LS.get('code', '');
+  if (!code || !staff) return viewLogin();
+  $('#app').innerHTML = '<div class="login"><h1>MC2</h1><p>接続中…</p></div>';
+  const root = 'stores/' + storeKey(code);
+  try {
+    if (FIREBASE_CONFIG) {
+      await loadFirebase();
+      if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+      await firebase.auth().signInAnonymously();
+      DB = makeFbStore(firebase.database(), root);
+    } else {
+      DB = makeLocalStore(root);
+    }
+  } catch (e) {
+    LS.del('code');
+    return viewLogin('接続できませんでした：' + e.message);
+  }
+  DB.onConn(ok => { online = ok; setConn(); });
+  DB.on('config', v => {
+    if (!v) { DB.set('config', DEFAULT_CONFIG()); return; }
+    S.config = normConfig(v); subscribeBiz(); render();
+  });
+  DB.on('tables', v => { S.tables = v || {}; render(); });
+  setInterval(tick, 1000);
+  document.addEventListener('click', unlockAudio, { once: true });
+}
+boot();
+</script>
+</body>
+</html>
