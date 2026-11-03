@@ -75,8 +75,15 @@ main{padding:12px;max-width:1300px;margin:0 auto}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:10px}
 .card{position:relative;background:var(--panel);border:1px solid var(--line);border-left:5px solid #444;border-radius:14px;padding:10px 11px;min-height:132px;cursor:pointer;transition:transform .08s}
 .card:active{transform:scale(.97)}
-.ct{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.ct{display:flex;align-items:center;justify-content:space-between;gap:4px 6px;flex-wrap:wrap}
+.ct .setno{margin-right:auto}
 .tname{font-weight:800;font-size:18px}
+/* 何セット目か（最初のセット＝1、延長・ハーフ延長ごとに+1） */
+.setno{display:inline-block;font-weight:800;font-size:13px;padding:1px 8px;border-radius:99px;background:#2c2c3b;color:#ddd;white-space:nowrap}
+.setno.more{background:var(--gold);color:#000}
+.setno small{font-size:.8em;margin-left:2px}
+.mt .setno{font-size:1.05em;padding:0 6px;flex-shrink:0}
+.mt.sub .setno{font-size:.85em}
 .badge{font-size:11px;padding:2px 7px;border-radius:99px;background:#333;color:#ddd;white-space:nowrap}
 .card .timer{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;margin:4px 0 0;letter-spacing:.02em}
 .card .sub{font-size:11px;color:var(--muted)}
@@ -455,7 +462,10 @@ const castRows = s => {
     + (jon.length ? `<div class="row"><span class="lbl l-jon">場</span>${namesHtml(jon, () => 'c-jon')}</div>` : '')
     + (seat.length ? `<div class="row"><span class="lbl l-seat">付</span>${namesHtml(seat, c => roleOf(s, c))}</div>` : '');
 };
-const extText =(h, f, sep = '・') => [h ? 'ハーフ' + h : '', f ? '延長' + f : ''].filter(Boolean).map(x => sep + x).join('');
+// 何セット目か：最初のセットが1、延長・ハーフ延長を1回するごとに+1（今がハーフなら「H」）
+const setNo = s => { const l = extList(s); return { n: 1 + l.length, half: !!l.length && l[l.length - 1].k === 'h' }; };
+const setPill = (s, word = 'セット') => { const x = setNo(s); return `<span class="setno ${x.n > 1 ? 'more' : ''}">${x.n}${word}${x.half ? '<small>H</small>' : ''}</span>`; };
+const extText = (h, f, sep = '・') => [h ? 'ハーフ' + h : '', f ? '延長' + f : ''].filter(Boolean).map(x => sep + x).join('');
 
 // キャストの現在地（全卓を横断）
 function castWhere(cid) {
@@ -759,7 +769,8 @@ function mapCardHtml(t, it, L, now) {
   const base = parentOf(t) ? 'mt sub' : 'mt';  // 分割席は図面どおり丸く表示
   if (!s) return `<div class="${base} st-empty" data-card="${t.id}" data-base="${base}" style="${pos(it, L)}" onclick="A.open('${t.id}')">${head}<div class="et">空席</div></div>`;
   const kb = base + ' ' + kindOf(s);
-  return `<div class="${kb} st-${st}" data-card="${t.id}" data-base="${kb}" style="${pos(it, L)}" onclick="A.open('${t.id}')">${head}
+  const headS = `<div class="mn"><span>${esc(t.name)}</span>${setPill(s, parentOf(t) ? '' : 'S')}<span class="badge">${STAGE_LABEL[st]}</span></div>`;
+  return `<div class="${kb} st-${st}" data-card="${t.id}" data-base="${kb}" style="${pos(it, L)}" onclick="A.open('${t.id}')">${headS}
     <div class="timer" data-timer="${t.id}">${fmtRemain(s.end - now)}</div>
     ${castRows(s)}
     <div class="row" style="color:var(--muted)">${s.guests || 1}名${(e => extText(e.h, e.f).replace('ハーフ', 'H').replace('延長', '延'))(extCount(s))}${s.customer ? '・' + esc(s.customer) : ''}</div>
@@ -810,7 +821,7 @@ function cardHtml(t, now) {
   if (!s) return `<div class="card st-empty" data-card="${t.id}" onclick="A.open('${t.id}')"><div class="ct"><span class="tname">${esc(t.name)}</span><span class="badge">空席</span></div><div class="empty-txt">空席</div></div>`;
   const kb = 'card ' + kindOf(s);
   return `<div class="${kb} st-${st}" data-card="${t.id}" data-base="${kb}" onclick="A.open('${t.id}')">
-    <div class="ct"><span class="tname">${esc(t.name)}</span><span class="badge">${STAGE_LABEL[st]}</span></div>
+    <div class="ct"><span class="tname">${esc(t.name)}</span>${setPill(s, 'セット目')}<span class="badge">${STAGE_LABEL[st]}</span></div>
     <div class="timer" data-timer="${t.id}">${fmtRemain(s.end - now)}</div>
     <div class="sub">${hm(s.start)}→${hm(s.end)}・${s.guests || 1}名${(e => extText(e.h, e.f))(extCount(s))}${s.customer ? '・' + esc(s.customer) : ''}</div>
     ${castRows(s)}
@@ -860,7 +871,7 @@ function subSec(tid) {
 function viewSession(t, s) {
   const now = DB.now(), st = stageOf(s, now), jl = jonaiList(s), ec = extCount(s);
   const empties = C().tables.filter(x => !sess(x.id));
-  return `<div class="sh-head"><h2>${esc(t.name)}</h2><span class="badge" style="background:#333">${STAGE_LABEL[st]}</span><button class="x" onclick="A.close()">×</button></div>
+  return `<div class="sh-head"><h2>${esc(t.name)}</h2>${setPill(s, 'セット目')}<span class="badge" style="background:#333">${STAGE_LABEL[st]}</span><button class="x" onclick="A.close()">×</button></div>
   <div class="bigtimer" data-timer="${t.id}" data-st="${st}">${fmtRemain(s.end - now)}</div>
   <div class="meta">IN ${hm(s.start)} → OUT ${hm(s.end)}・経過 ${fmtDur(now - s.start)}・セット${s.setMin}分${ec.h ? '・ハーフ延長' + ec.h + '回' : ''}${ec.f ? '・延長' + ec.f + '回' : ''}<br>着席操作: ${esc(s.by || '')}</div>
   <div class="btns">
