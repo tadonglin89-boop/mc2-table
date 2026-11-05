@@ -1159,19 +1159,20 @@ function renderCastList() {
 }
 
 /* ---- 成績（女の子ごとの場内率・本指名） ---- */
-let statQ = { p: 'month', from: '', to: '' }, statRows = null;
+let statQ = { p: 'month', from: '', to: '' }, statRows = null, statSeq = 0, statErr = '';
 const ymd = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 function statRange() {
-  const [y, m, d] = curBiz.split('-').map(Number), today = new Date(y, m - 1, d);
-  if (statQ.p === 'day') return [curBiz, curBiz];
-  if (statQ.p === 'week') { const s = new Date(today); s.setDate(d - ((today.getDay() + 6) % 7)); return [ymd(s), curBiz]; }  // 月曜はじまり
-  if (statQ.p === 'month') return [ymd(new Date(y, m - 1, 1)), curBiz];
+  const cb = curBiz || bizDate(DB.now());
+  const [y, m, d] = cb.split('-').map(Number), today = new Date(y, m - 1, d);
+  if (statQ.p === 'day') return [cb, cb];
+  if (statQ.p === 'week') { const s = new Date(today); s.setDate(d - ((today.getDay() + 6) % 7)); return [ymd(s), cb]; }  // 月曜はじまり
+  if (statQ.p === 'month') return [ymd(new Date(y, m - 1, 1)), cb];
   if (statQ.p === 'last') return [ymd(new Date(y, m - 2, 1)), ymd(new Date(y, m - 1, 0))];
-  return [statQ.from || curBiz, statQ.to || curBiz];
+  return [statQ.from || cb, statQ.to || cb];
 }
 async function loadStat() {
-  const [from, to] = statRange(), sum = {};
-  statRows = null; renderStat();
+  const [from, to] = statRange(), sum = {}, seq = ++statSeq;
+  statRows = null; statErr = ''; renderStat();
   const row = c => sum[c] = sum[c] || { h: 0, f: 0, j: 0, d: 0 };
   const add = st => Object.entries(st || {}).forEach(([c, v]) => { const a = row(c); a.h += v.h || 0; a.f += v.f || 0; a.j += v.j || 0; });
   let n = 0;
@@ -1180,7 +1181,8 @@ async function loadStat() {
     Object.values(days).forEach(day => Object.values(day || {}).forEach(h => { if (h.stats) { add(h.stats); n++; } }));
     // 出勤日数：「本日の出勤」に登録された日を数える
     Object.values(shifts).forEach(day => keys(day || {}).forEach(c => row(c).d++));
-  } catch (e) { toast('読込エラー: ' + e.message, 'over'); }
+  } catch (e) { statErr = e.message; renderStat(); return; }
+  if (seq !== statSeq) return;  // 途中で期間を切り替えたら古い結果は捨てる
   // 今いる卓も含める（その時点までの実績）
   C().tables.forEach(t => { const s = sess(t.id); if (s) { const b = bizDate(s.start); if (b >= from && b <= to) { add(castStats(s)); n++; } } });
   statRows = { from, to, n, rows: Object.entries(sum).map(([c, a]) => ({ c, ...a, rate: a.f ? a.j / a.f : -1 })) };
@@ -1189,15 +1191,16 @@ async function loadStat() {
 const pct = r => r < 0 ? '－' : Math.round(r * 100) + '%';
 function viewStat() {
   const seg = [['day', '今日'], ['week', '今週'], ['month', '今月'], ['last', '先月'], ['custom', '期間指定']];
-  setTimeout(loadStat);
+  setTimeout(() => loadStat().catch(e => { statErr = e.message; renderStat(); }));
   return `<div id="statWrap"><div class="seg statseg">${seg.map(([k, l]) => `<button class="${statQ.p === k ? 'on' : ''}" onclick="A.statP('${k}')">${l}</button>`).join('')}</div>
-  ${statQ.p === 'custom' ? `<div class="two" style="margin-top:8px"><input type="date" value="${statQ.from || curBiz}" onchange="A.statD('from',this.value)"><input type="date" value="${statQ.to || curBiz}" onchange="A.statD('to',this.value)"></div>` : ''}
+  ${statQ.p === 'custom' ? `<div class="two" style="margin-top:8px"><input type="date" value="${statRange()[0]}" onchange="A.statD('from',this.value)"><input type="date" value="${statRange()[1]}" onchange="A.statD('to',this.value)"></div>` : ''}
   <div id="statBody"></div>
   <p class="help">出勤日数＝キャスト画面の「本日の出勤」に登録された日数。<br>フリー付卓＝本指名以外で付いた卓の数（フリー卓と、指名卓の枝＝ヘルプを含む）。同じ卓に何回付いても1卓。<br>場内率＝場内をもらった卓 ÷ フリー付卓。退店済みの卓と、いま着席中の卓を数えます。</p></div>`;
 }
 function renderStat() {
   const el = $('#statBody'); if (!el) return;
-  if (!statRows) { el.innerHTML = '<p class="help">集計中…</p>'; return; }
+  if (statErr) { el.innerHTML = `<p class="help" style="color:var(--red)">読み込めませんでした：${esc(statErr)}</p><button class="btn sm gold" onclick="loadStat()">再読み込み</button>`; return; }
+  if (!statRows) { el.innerHTML = '<p class="help">集計中…（通信状況により数秒かかります）</p>'; return; }
   const { from, to, n, rows } = statRows, sort = statQ.sort || 'rate';
   rows.sort((a, b) => sort === 'h' ? b.h - a.h || b.rate - a.rate : sort === 'f' ? b.f - a.f : sort === 'd' ? b.d - a.d : b.rate - a.rate || b.f - a.f);
   const tot = rows.reduce((t, r) => ({ h: t.h + r.h, f: t.f + r.f, j: t.j + r.j, d: t.d + r.d }), { h: 0, f: 0, j: 0, d: 0 });
