@@ -77,6 +77,22 @@ main{padding:12px;max-width:1300px;margin:0 auto}
 .card:active{transform:scale(.97)}
 .ct{display:flex;align-items:center;justify-content:space-between;gap:4px 6px;flex-wrap:wrap}
 .ct .setno{margin-right:auto}
+/* スタート→終了（5分刻み） */
+.span{display:flex;align-items:flex-end;gap:10px;font-weight:800;font-size:26px;font-variant-numeric:tabular-nums;margin:2px 0 4px}
+.span small{display:block;font-size:11px;font-weight:600;color:var(--muted)}
+.span .arr{color:var(--muted);font-size:.8em}
+.span.sm{font-size:17px;gap:6px;margin:2px 0 0;align-items:center}
+/* 付け回し履歴 */
+.tl{width:100%;border-collapse:collapse;font-size:14px}
+.tl td{padding:5px 4px;border-bottom:1px solid var(--line)}
+.tl td.s{color:var(--gold);font-weight:800;width:3em}
+.tl td.t{color:var(--muted);white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums}
+/* 本日の出勤 */
+.shiftbar{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin-bottom:10px}
+.shiftbar span{color:var(--gold);font-weight:800}
+.shiftbar .btn{margin-left:auto}
+.shiftwarn{display:flex;align-items:center;gap:10px;background:#2a2108;border:1px solid var(--gold);color:var(--gold);border-radius:12px;padding:8px 12px;margin:0 0 10px;font-weight:700}
+.shiftwarn .btn{margin-left:auto}
 .tname{font-weight:800;font-size:18px}
 /* 何セット目か（最初のセット＝1、延長・ハーフ延長ごとに+1） */
 .setno{display:inline-block;font-weight:800;font-size:13px;padding:1px 8px;border-radius:99px;background:#2c2c3b;color:#ddd;white-space:nowrap}
@@ -363,7 +379,8 @@ async function loadFirebase() {
 
 /* ============ 状態 ============ */
 let DB = null;
-const S = { config: null, tables: {}, logs: {}, history: {} };
+const S = { config: null, tables: {}, logs: {}, history: {}, shift: {} };
+let shiftEdit = false;   // キャスト画面で出勤を編集中か
 let tab = LS.get('tab', 'board');
 let sheet = null;        // {tid, pick, form, q}
 let curBiz = null, unsubBiz = [];
@@ -409,11 +426,15 @@ const DEFAULT_CONFIG = () => ({
   cutoff: 6,
   layout: MC2_LAYOUT()   // 席配置（座標は w×h のマス目単位）
 });
+// 系列店からのヘルプ枠（常にキャスト一覧の最後に出る）
+const HELP_CASTS = [['h_halo1', 'HALOヘルプ1'], ['h_halo2', 'HALOヘルプ2'], ['h_halo3', 'HALOヘルプ3'], ['h_halo4', 'HALOヘルプ4'],
+  ['h_cejour1', 'CEJOURヘルプ1'], ['h_cejour2', 'CEJOURヘルプ2'], ['h_cejour3', 'CEJOURヘルプ3']];
+const isHelp = c => c.id.startsWith('h_');
 function normConfig(c) {
   const d = DEFAULT_CONFIG();
   return {
     tables: vals(c.tables).length ? vals(c.tables) : d.tables,
-    casts: vals(c.casts),
+    casts: vals(c.casts).filter(x => !isHelp(x)).concat(HELP_CASTS.map(([id, name]) => ({ id, name, active: true }))),
     setOptions: vals(c.setOptions).map(Number).filter(n => n > 0).length ? vals(c.setOptions).map(Number).filter(n => n > 0) : d.setOptions,
     extHalf: +c.extHalf || d.extHalf,
     extFull: +c.extFull || d.extFull,
@@ -467,6 +488,26 @@ const setNo = s => { const l = extList(s); return { n: 1 + l.length, half: !!l.l
 const setPill = (s, word = 'セット') => { const x = setNo(s); return `<span class="setno ${x.n > 1 ? 'more' : ''}">${x.n}${word}${x.half ? '<small>H</small>' : ''}</span>`; };
 const extText = (h, f, sep = '・') => [h ? 'ハーフ' + h : '', f ? '延長' + f : ''].filter(Boolean).map(x => sep + x).join('');
 
+// 付け回しの記録（c=キャスト, in=付いた時刻, out=抜けた時刻, set=何セット目に付いたか）
+const tsukeList = s => Object.entries(s.tsuke || {}).map(([id, e]) => ({ id, ...e })).sort((a, b) => a.in - b.in);
+const tsukeEntry = (s, cid, at) => ({ c: cid, in: at, set: setNo(s).n, by: staff });
+function seatOn(tid, s, cid) {
+  if (s.seat && s.seat[cid]) return;
+  DB.set(`tables/${tid}/seat/${cid}`, true);
+  DB.push(`tables/${tid}/tsuke`, tsukeEntry(s, cid, DB.now()));
+}
+function seatOff(tid, s, cid) {
+  DB.set(`tables/${tid}/seat/${cid}`, null);
+  const open = tsukeList(s).filter(e => e.c === cid && !e.out).pop();
+  if (open) DB.set(`tables/${tid}/tsuke/${open.id}/out`, DB.now());
+}
+// 本日の出勤（営業日ごと）。未登録の日は全員を対象にする
+const shiftSet = () => !!keys(S.shift).length;
+const onShift = cid => !shiftSet() || !!S.shift[cid];
+const shiftCasts = () => activeCasts().filter(c => onShift(c.id));
+// 席の開始は5分刻み：押した時刻に一番近い0分・5分にそろえる
+const round5 = t => Math.round(t / 300000) * 300000;
+
 // キャストの現在地（全卓を横断）
 function castWhere(cid) {
   const w = { hon: [], jon: [], seat: [] };
@@ -484,7 +525,7 @@ function log(tid, msg) { DB.push('logs/' + bizDate(DB.now()), { t: DB.now(), tb:
 const A = {
   open(tid) { unlockAudio(); const s = sess(tid); sheet = { tid, pick: null, q: '', form: s ? null : { guests: 1, setMin: C().setOptions[0], customer: '', hon: {}, seat: {} } }; renderSheet(); },
   close() { sheet = null; renderSheet(); },
-  tab(t) { tab = t; LS.set('tab', t); window.scrollTo(0, 0); render(); },
+  tab(t) { tab = t; LS.set('tab', t); if (t !== 'cast') shiftEdit = false; window.scrollTo(0, 0); render(); },
 
   // --- 着席フォーム ---
   fGuests(d) { sheet.form.guests = Math.max(1, sheet.form.guests + d); renderSheet(); },
@@ -493,11 +534,12 @@ const A = {
   seat() {
     const f = sheet.form, tid = sheet.tid;
     if (sess(tid)) { toast('他の端末で既に着席済みです', 'warn'); sheet.form = null; renderSheet(); return; }
-    const now = DB.now();
-    const s = { sid: rid('s'), start: now, end: now + f.setMin * 60000, setMin: f.setMin, guests: f.guests, customer: f.customer.trim(), hon: f.hon, seat: f.seat, status: 'seated', by: staff };
+    const now = DB.now(), start = round5(now);
+    const s = { sid: rid('s'), start, pressed: now, end: start + f.setMin * 60000, setMin: f.setMin, guests: f.guests, customer: f.customer.trim(), hon: f.hon, seat: f.seat, status: 'seated', by: staff };
+    s.tsuke = {}; keys(f.seat).forEach(c => { s.tsuke[rid('k')] = { c, in: now, set: 1, by: staff }; });
     DB.set('tables/' + tid, s);
     const hn = keys(f.hon).map(castName).join('・');
-    log(tid, `着席 ${f.guests}名 ${f.setMin}分` + (s.customer ? ` (${s.customer}様)` : '') + (hn ? ` 本指名:${hn}` : ''));
+    log(tid, `着席 ${f.guests}名 ${f.setMin}分 ${hm(start)}〜${hm(s.end)}` + (s.customer ? ` (${s.customer}様)` : '') + (hn ? ` 本指名:${hn}` : ''));
     sheet.form = null;
   },
 
@@ -558,19 +600,27 @@ const A = {
       log(tid, `本指名${on ? '追加' : '解除'}: ${castName(cid)}`);
     } else if (k === 'seat') {
       const on = !(s.seat && s.seat[cid]);
-      DB.set(`tables/${tid}/seat/${cid}`, on || null);
+      if (on) seatOn(tid, s, cid); else seatOff(tid, s, cid);
       log(tid, `${on ? '着席' : '抜け'}: ${castName(cid)}`);
     } else if (k === 'jon') {
       if (jonaiList(s).some(j => j.c === cid) && !confirm(`${castName(cid)} は既にこの卓で場内指名済みです。もう一度追加しますか？`)) return;
       DB.push(`tables/${tid}/jonai`, { c: cid, at: DB.now(), by: staff });
-      DB.set(`tables/${tid}/seat/${cid}`, true);
+      seatOn(tid, s, cid);
       log(tid, `場内指名: ${castName(cid)}`);
       toast(`${tableName(tid)} 場内指名 ${castName(cid)}`);
       sheet.pick = null; renderSheet();
     }
   },
   rmHon(cid) { const tid = sheet.tid; if (!confirm(`本指名「${castName(cid)}」を解除しますか？`)) return; DB.set(`tables/${tid}/hon/${cid}`, null); log(tid, `本指名解除: ${castName(cid)}`); },
-  rmSeat(cid) { const tid = sheet.tid; DB.set(`tables/${tid}/seat/${cid}`, null); log(tid, `抜け: ${castName(cid)}`); },
+  // --- 本日の出勤（いつでも変更可） ---
+  shiftEdit(on) { shiftEdit = on; if (on) A.tab('cast'); else { $('#main').innerHTML = ''; render(); } },
+  shiftToggle(cid) {
+    const on = !S.shift[cid];
+    DB.set(`shift/${curBiz}/${cid}`, on || null);
+    log(null, `出勤${on ? '追加' : '取消'}: ${castName(cid)}`);
+  },
+  pickAll() { sheet.all = !sheet.all; renderSheet(); },
+  rmSeat(cid) { const tid = sheet.tid, s = sess(tid); if (!s) return; seatOff(tid, s, cid); log(tid, `抜け: ${castName(cid)}`); },
   rmJon(jid) {
     const tid = sheet.tid, s = sess(tid); if (!s || !s.jonai || !s.jonai[jid]) return;
     const c = s.jonai[jid].c;
@@ -595,6 +645,7 @@ const A = {
       setMin: s.setMin, extH: ec.h, extF: ec.f,
       hon: keys(s.hon), honN: keys(s.hon).map(castName),
       jon: jonaiList(s).map(j => j.c), jonN: jonaiList(s).map(j => castName(j.c) + ' ' + hm(j.at)),
+      tsukeN: tsukeList(s).map(e => `${e.set || 1}S ${castName(e.c)} ${hm(e.in)}-${hm(e.out || now)}`),
       by: staff
     });
     DB.set('tables/' + tid, null);
@@ -612,8 +663,9 @@ const A = {
     if (removed.length) return toast(`使用中の卓は削除できません: ${removed.map(t => t.name).join(',')}`, 'warn');
     const cnames = $('#s-casts').value.split('\n').map(x => x.trim()).filter(Boolean);
     if (new Set(cnames).size !== cnames.length) return toast('キャスト名が重複しています', 'warn');
-    const casts = cnames.map(n => { const ex = c.casts.find(x => x.name === n); return ex ? { ...ex, active: true } : { id: rid('c'), name: n, active: true }; });
-    c.casts.forEach(x => { if (!casts.some(y => y.id === x.id)) casts.push({ ...x, active: false }); });
+    const own = c.casts.filter(x => !isHelp(x));
+    const casts = cnames.map(n => { const ex = own.find(x => x.name === n); return ex ? { ...ex, active: true } : { id: rid('c'), name: n, active: true }; });
+    own.forEach(x => { if (!casts.some(y => y.id === x.id)) casts.push({ ...x, active: false }); });
     const setOptions = $('#s-sets').value.split(/[,、\s]+/).map(Number).filter(n => n > 0);
     const cfg = { layout: c.layout, busy: c.busy, tables, casts, setOptions: setOptions.length ? setOptions : [60], extHalf: +$('#s-exth').value || 30, extFull: +$('#s-extf').value || 60, warnMin: +$('#s-warn').value || 10, cutoff: Math.min(12, Math.max(0, +$('#s-cut').value || 0)) };
     DB.set('config', cfg);
@@ -624,8 +676,8 @@ const A = {
   sound(on) { LS.set('sound', on); if (on) { unlockAudio(); beep('warn'); } render(); },
   logout() { if (!confirm('ログアウトしますか？')) return; LS.del('code'); location.reload(); },
   csv() {
-    const rows = [['卓', 'IN', 'OUT', '滞在', '人数', 'お客様', '本指名', '場内指名', 'セット(分)', 'ハーフ延長(回)', '延長(回)', 'メモ', '担当']];
-    histList().forEach(h => rows.push([h.table, hm(h.start), hm(h.out), fmtDur(h.out - h.start), h.guests, h.customer, (h.honN || []).join(' / '), (h.jonN || []).join(' / '), h.setMin, h.extH || 0, h.extF || 0, h.memo || '', h.by]));
+    const rows = [['卓', 'IN', 'OUT', '滞在', '人数', 'お客様', '本指名', '場内指名', 'セット(分)', 'ハーフ延長(回)', '延長(回)', '付け回し', 'メモ', '担当']];
+    histList().forEach(h => rows.push([h.table, hm(h.start), hm(h.out), fmtDur(h.out - h.start), h.guests, h.customer, (h.honN || []).join(' / '), (h.jonN || []).join(' / '), h.setMin, h.extH || 0, h.extF || 0, (h.tsukeN || []).join(' / '), h.memo || '', h.by]));
     const csv = '﻿' + rows.map(r => r.map(v => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(',')).join('\r\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -729,7 +781,7 @@ function renderNow() {
   setConn();
   const m = $('#main');
   if (tab === 'board') { if (editLayout) { if (!$('#map.editing')) renderEditor(); } else m.innerHTML = viewBoard(); }
-  else if (tab === 'cast') { if (!$('#castList')) m.innerHTML = viewCastShell(); renderCastList(); }
+  else if (tab === 'cast') { if (shiftEdit) m.innerHTML = viewShiftEdit(); else { if (!$('#castList')) m.innerHTML = viewCastShell(); renderCastList(); } }
   else if (tab === 'hist') m.innerHTML = viewHist();
   else if (tab === 'set') { if (!$('#s-tables')) m.innerHTML = viewSet(); }  // 編集中の内容を他端末の更新で消さない
   renderSheet(true);
@@ -747,13 +799,14 @@ function viewBoard() {
   const ts = C().tables.filter(visibleTable), mainCount = C().tables.filter(t => !parentOf(t)).length;
   let used = 0, guests = 0, over = 0;
   ts.forEach(t => { const s = sess(t.id); if (s) { used++; guests += +s.guests || 0; const st = stageOf(s, now); if (st === 'over' || st === 'warn') over++; } });
-  const busy = activeCasts().filter(c => { const w = castWhere(c.id); return w.seat.length; }).length;
+  const busy = shiftCasts().filter(c => { const w = castWhere(c.id); return w.seat.length; }).length;
   return `<div class="viewbar"><div class="seg"><button class="${mode === 'map' ? 'on' : ''}" onclick="A.view('map')">マップ</button><button class="${mode === 'list' ? 'on' : ''}" onclick="A.view('list')">一覧</button></div>
     <span class="kpi">使用 <b>${used}</b>/${mainCount}卓</span><span class="kpi">客 <b>${guests}</b>名</span>
-    <span class="kpi ${over ? 'alert' : ''}">要対応 <b>${over}</b></span><span class="kpi">待機 <b>${activeCasts().length - busy}</b>/${activeCasts().length}名</span>
+    <span class="kpi ${over ? 'alert' : ''}">要対応 <b>${over}</b></span><span class="kpi">待機 <b>${shiftCasts().length - busy}</b>/${shiftCasts().length}名</span>
     <span style="margin-left:auto;display:flex;gap:4px">
       <button class="btn sm ${C().busy ? 'gold' : ''}" onclick="A.busy()">繁忙日モード ${C().busy ? 'ON' : 'OFF'}</button>
       ${mode === 'map' ? `<button class="btn sm" onclick="A.fit()">${LS.get('mapFit', false) ? '拡大' : '全体'}</button><button class="btn sm" onclick="A.editMap()">配置</button>` : ''}</span></div>
+  ${shiftSet() ? '' : `<div class="shiftwarn">本日の出勤がまだ登録されていません<button class="btn sm gold" onclick="A.shiftEdit(true)">出勤を登録する</button></div>`}
   ${mode === 'map' ? viewMap(now) : `<div class="grid">${ts.map(t => cardHtml(t, now)).join('')}</div>`}`;
 }
 function viewMap(now) {
@@ -823,7 +876,8 @@ function cardHtml(t, now) {
   return `<div class="${kb} st-${st}" data-card="${t.id}" data-base="${kb}" onclick="A.open('${t.id}')">
     <div class="ct"><span class="tname">${esc(t.name)}</span>${setPill(s, 'セット目')}<span class="badge">${STAGE_LABEL[st]}</span></div>
     <div class="timer" data-timer="${t.id}">${fmtRemain(s.end - now)}</div>
-    <div class="sub">${hm(s.start)}→${hm(s.end)}・${s.guests || 1}名${(e => extText(e.h, e.f))(extCount(s))}${s.customer ? '・' + esc(s.customer) : ''}</div>
+    <div class="span sm"><span>${hm(s.start)}</span><span class="arr">→</span><span>${hm(s.end)}</span></div>
+    <div class="sub">${s.guests || 1}名・付け回し${tsukeList(s).length}回${(e => extText(e.h, e.f))(extCount(s))}${s.customer ? '・' + esc(s.customer) : ''}</div>
     ${castRows(s)}
   </div>`;
 }
@@ -859,6 +913,7 @@ function viewSeatForm(t) {
   <div class="sec"><h3>最初に付くキャスト<button class="btn sm add" onclick="A.pick('fseat')">選択</button></h3>
     <div class="chips">${keys(f.seat).map(c => `<span class="chip seat">${esc(castName(c))}</span>`).join('') || '<span class="none">未選択</span>'}</div></div>
   ${subSec(t.id)}
+  <p class="help">スタート時刻は5分刻み：押した時刻に近いほう（0分か5分）にそろえます。<br>いま押すと <b style="color:var(--text)">${hm(round5(DB.now()))} スタート → ${hm(round5(DB.now()) + f.setMin * 60000)} 終了</b></p>
   <button class="btn gold wide" onclick="A.seat()">着席スタート（${f.setMin}分）</button>`;
 }
 // 分割席への入口（親の卓の画面に表示）と、分割席から親へ戻るボタン
@@ -869,11 +924,12 @@ function subSec(tid) {
   return `<div class="sec"><h3>分割席（繁忙時）</h3><div class="chips">${subs.map(x => `<button class="btn sm ${sess(x.id) ? 'gold' : ''}" onclick="A.open('${x.id}')">${esc(x.name)} ${sess(x.id) ? '使用中' : 'を使う'}</button>`).join('')}</div></div>`;
 }
 function viewSession(t, s) {
-  const now = DB.now(), st = stageOf(s, now), jl = jonaiList(s), ec = extCount(s);
+  const now = DB.now(), st = stageOf(s, now), jl = jonaiList(s), ec = extCount(s), tl = tsukeList(s);
   const empties = C().tables.filter(x => !sess(x.id));
   return `<div class="sh-head"><h2>${esc(t.name)}</h2>${setPill(s, 'セット目')}<span class="badge" style="background:#333">${STAGE_LABEL[st]}</span><button class="x" onclick="A.close()">×</button></div>
   <div class="bigtimer" data-timer="${t.id}" data-st="${st}">${fmtRemain(s.end - now)}</div>
-  <div class="meta">IN ${hm(s.start)} → OUT ${hm(s.end)}・経過 ${fmtDur(now - s.start)}・セット${s.setMin}分${ec.h ? '・ハーフ延長' + ec.h + '回' : ''}${ec.f ? '・延長' + ec.f + '回' : ''}<br>着席操作: ${esc(s.by || '')}</div>
+  <div class="span"><span><small>スタート</small>${hm(s.start)}</span><span class="arr">→</span><span><small>終了</small>${hm(s.end)}</span></div>
+  <div class="meta">${s.pressed ? `スタート押下 ${hm(s.pressed)}（5分刻みで${hm(s.start)}）・` : ''}経過 ${fmtDur(now - s.start)}・セット${s.setMin}分${ec.h ? '・ハーフ延長' + ec.h + '回' : ''}${ec.f ? '・延長' + ec.f + '回' : ''}<br>着席操作: ${esc(s.by || '')}</div>
   <div class="btns">
     <button class="btn gold" onclick="A.extend('h')"><span style="white-space:nowrap">ハーフ延長</span><br>+${C().extHalf}分</button>
     <button class="btn gold" onclick="A.extend('f')">延長<br>+${C().extFull}分</button>
@@ -887,7 +943,9 @@ function viewSession(t, s) {
   <div class="sec"><h3><span class="lbl l-jon">場</span>場内指名 ${jl.length ? jl.length + '件' : ''}<button class="btn sm add" onclick="A.pick('jon')">＋場内指名</button></h3>
     <div class="chips">${jl.map(j => `<span class="chip jon">${esc(castName(j.c))} <small>${hm(j.at)}</small><button class="rm" onclick="A.rmJon('${j.id}')">×</button></span>`).join('') || '<span class="none">なし</span>'}</div></div>
   <div class="sec"><h3><span class="lbl l-seat">付</span>今ついているキャスト<button class="btn sm add" onclick="A.pick('seat')">付け回し</button></h3>
-    <div class="chips">${keys(s.seat).map(c => `<span class="chip seat ${roleOf(s, c)}">${esc(castName(c))}<button class="rm" onclick="A.rmSeat('${c}')">抜</button></span>`).join('') || '<span class="none">誰もついていません</span>'}</div></div>
+    <div class="chips">${keys(s.seat).map(c => { const e = tl.filter(x => x.c === c && !x.out).pop(); return `<span class="chip seat ${roleOf(s, c)}">${esc(castName(c))}${e ? ` <small>${hm(e.in)}〜</small>` : ''}<button class="rm" onclick="A.rmSeat('${c}')">抜</button></span>`; }).join('') || '<span class="none">誰もついていません</span>'}</div></div>
+  <div class="sec"><h3>付け回し履歴 <span style="color:var(--muted);font-weight:400;font-size:13px">（今のセット ${tl.filter(e => (e.set || 1) === setNo(s).n).length}回・合計 ${tl.length}回）</span></h3>
+    ${tl.length ? `<table class="tl">${tl.map(e => `<tr><td class="s">${e.set || 1}S</td><td class="${roleOf(s, e.c)}">${esc(castName(e.c))}</td><td class="t">${hm(e.in)}〜${e.out ? hm(e.out) : '<b>着席中</b>'}</td><td class="t">${fmtDur((e.out || now) - e.in)}</td></tr>`).join('')}</table>` : '<span class="none">まだ記録がありません</span>'}</div>
   <div class="sec">
     <div class="field"><label>人数</label><div class="stepper"><button onclick="A.guests(-1)">−</button><b>${s.guests || 1}</b><button onclick="A.guests(1)">＋</button><span style="color:var(--muted)">名</span></div></div>
     <div class="field"><label>お客様名</label><input value="${esc(s.customer || '')}" onchange="A.field('customer',this)" placeholder="例：山田様"></div>
@@ -900,7 +958,7 @@ function viewSession(t, s) {
 const PICK_TITLE = { hon: '本指名を追加／解除', jon: '場内指名するキャスト', seat: '付け回し（着席／抜け）', fhon: '本指名を選択', fseat: '最初に付くキャストを選択' };
 function viewPicker() {
   return `<div class="sh-head"><button class="btn sm" onclick="A.unpick()">← 戻る</button><h2 style="font-size:17px">${PICK_TITLE[sheet.pick]}</h2></div>
-  <input placeholder="名前で検索" value="${esc(sheet.q)}" oninput="A.q(this)">
+  <div style="display:flex;gap:6px"><input placeholder="名前で検索" value="${esc(sheet.q)}" oninput="A.q(this)">${shiftSet() ? `<button class="btn sm ${sheet.all ? 'gold' : ''}" style="white-space:nowrap" onclick="A.pickAll()">${sheet.all ? '出勤のみ' : '出勤外も表示'}</button>` : ''}</div>
   <div class="pgrid" id="pgrid"></div>
   ${sheet.pick === 'jon' ? '' : '<button class="btn gold wide" style="margin-top:12px" onclick="A.unpick()">決定</button>'}
   ${activeCasts().length ? '' : '<p class="help">キャストが未登録です。「設定」タブで登録してください。</p>'}`;
@@ -909,15 +967,27 @@ function renderPickGrid() {
   const g = $('#pgrid'); if (!g || !sheet) return;
   const k = sheet.pick, s = sess(sheet.tid), q = sheet.q.trim();
   const sel = id => k === 'fhon' ? sheet.form.hon[id] : k === 'fseat' ? sheet.form.seat[id] : k === 'hon' ? s && s.hon && s.hon[id] : k === 'seat' ? s && s.seat && s.seat[id] : false;
-  g.innerHTML = activeCasts().filter(c => !q || c.name.includes(q)).map(c => {
+  // 出勤中の子だけ出す（「出勤外も表示」で全員）。すでにこの卓で選ばれている子は常に出す
+  g.innerHTML = activeCasts().filter(c => (sheet.all || onShift(c.id) || sel(c.id)) && (!q || c.name.includes(q))).map(c => {
     const w = castWhere(c.id);
     const hint = w.seat.length ? '着席:' + w.seat.join(',') : w.hon.length ? '本指名:' + w.hon.join(',') : '待機';
     return `<button class="pc ${sel(c.id) ? 'sel' : ''} ${w.seat.length ? 'busy' : ''}" onclick="A.pickCast('${c.id}')">${esc(c.name)}<small>${esc(hint)}</small></button>`;
   }).join('');
 }
 
+// 本日の出勤：タップで出勤／休みを切り替え（全端末に即反映・営業中もいつでも変更可）
+function viewShiftEdit() {
+  const btn = c => `<button class="pc ${S.shift[c.id] ? 'sel' : ''}" onclick="A.shiftToggle('${c.id}')">${esc(c.name)}<small>${S.shift[c.id] ? '出勤' : '休み'}</small></button>`;
+  const own = activeCasts().filter(c => !isHelp(c)), help = activeCasts().filter(isHelp);
+  return `<div class="shiftbar"><b>本日の出勤（${curBiz}）</b><span>${keys(S.shift).length}名</span><button class="btn sm gold" onclick="A.shiftEdit(false)">完了</button></div>
+  <p class="help">出勤する子をタップ（もう一度で取消）。営業中でもいつでも変更できます。</p>
+  <div class="pgrid">${own.map(btn).join('') || '<span class="none">キャストが未登録です（設定タブで登録）</span>'}</div>
+  <h4>系列店ヘルプ</h4>
+  <div class="pgrid">${help.map(btn).join('')}</div>`;
+}
 function viewCastShell() {
-  return `<input class="search" placeholder="キャスト名で検索" value="${esc(castQuery)}" oninput="A.castQ(this)">
+  return `<div class="shiftbar"><b>本日の出勤</b><span>${shiftSet() ? keys(S.shift).length + '名' : '未登録'}</span><button class="btn sm ${shiftSet() ? '' : 'gold'}" onclick="A.shiftEdit(true)">出勤を${shiftSet() ? '変更' : '登録'}</button></div>
+  <input class="search" placeholder="キャスト名で検索" value="${esc(castQuery)}" oninput="A.castQ(this)">
   <div class="list" id="castList"></div>
   <p class="help"><span class="lbl l-hon">本</span>本指名 <span class="lbl l-jon">場</span>場内指名 <span class="lbl l-seat">付</span>現在着席中 ／ 右側は本日の累計（本指名組数・場内指名数）</p>`;
 }
@@ -931,7 +1001,7 @@ function todayCounts() {
 function renderCastList() {
   const el = $('#castList'); if (!el) return;
   const cnt = todayCounts(), q = castQuery.trim();
-  const rows = activeCasts().filter(c => !q || c.name.includes(q)).map(c => ({ c, w: castWhere(c.id), n: cnt[c.id] || { hon: 0, jon: 0 } }));
+  const rows = shiftCasts().filter(c => !q || c.name.includes(q)).map(c => ({ c, w: castWhere(c.id), n: cnt[c.id] || { hon: 0, jon: 0 } }));
   rows.sort((a, b) => (b.w.seat.length ? 1 : 0) - (a.w.seat.length ? 1 : 0));
   el.innerHTML = rows.map(({ c, w, n }) => `<div class="castrow">
     <span class="nm">${esc(c.name)}</span>
@@ -962,6 +1032,7 @@ function viewHist() {
   <div class="list">${hs.map(h => `<div class="li"><span class="t">${hm(h.start)}<br>${hm(h.out)}</span><span class="m"><b>${esc(h.table)}</b> ${h.guests}名 ${esc(h.customer || '')} ・滞在${fmtDur(h.out - h.start)}${extText(h.extH, h.extF)}
     ${(h.honN || []).length ? `<br><span class="lbl l-hon">本</span>${esc(h.honN.join('、'))}` : ''}
     ${(h.jonN || []).length ? `<br><span class="lbl l-jon">場</span>${esc(h.jonN.join('、'))}` : ''}
+    ${(h.tsukeN || []).length ? `<br><span class="lbl l-seat">付</span>${esc(h.tsukeN.join('、'))}` : ''}
     ${h.memo ? `<br><span class="by">メモ: ${esc(h.memo)}</span>` : ''}</span></div>`).join('') || '<div class="li"><span class="m none">なし</span></div>'}</div>
   <h4>操作ログ（誰が・いつ・何をしたか）</h4>
   <div class="list">${logs.slice(0, 300).map(l => `<div class="li"><span class="t">${hm(l.t)}</span><span class="m">${l.tb ? '<b>' + esc(l.tb) + '</b> ' : ''}${esc(l.msg)}</span><span class="by">${esc(l.by)}</span></div>`).join('') || '<div class="li"><span class="m none">なし</span></div>'}</div>`;
@@ -976,7 +1047,8 @@ function viewSet() {
   <p class="help">残り${c.warnMin}分と時間超過で音・バイブ・画面通知が出ます。iPhoneは消音スイッチOFF＆一度画面をタップしてから有効になります。</p>
   <h4>店舗共通の設定（全端末に反映）</h4>
   <div class="field"><label>テーブル（1行に1卓・上から表示順）</label><textarea id="s-tables" rows="8">${esc(c.tables.map(t => t.name).join('\n'))}</textarea></div>
-  <div class="field"><label>在籍キャスト（1行に1名・上から表示順）</label><textarea id="s-casts" rows="10" placeholder="あい&#10;みく&#10;れな">${esc(activeCasts().map(x => x.name).join('\n'))}</textarea>
+  <div class="field"><label>在籍キャスト（1行に1名・上から表示順）</label><textarea id="s-casts" rows="10" placeholder="あい&#10;みく&#10;れな">${esc(activeCasts().filter(x => !isHelp(x)).map(x => x.name).join('\n'))}</textarea>
+    <p class="help">系列店のヘルプ枠（HALOヘルプ1〜4・CEJOURヘルプ1〜3）は自動で入っています。</p>
     <p class="help">名前を消しても過去の記録は残ります。名前を変えると別人扱いになります。</p></div>
   <div class="two">
     <div class="field"><label>セット時間の選択肢（分・カンマ区切り）</label><input id="s-sets" value="${esc(c.setOptions.join(','))}"></div>
@@ -1030,7 +1102,8 @@ function subscribeBiz() {
   curBiz = b; unsubBiz.forEach(f => f());
   unsubBiz = [
     DB.on('logs/' + b, v => { S.logs = v || {}; if (tab === 'hist') render(); }),
-    DB.on('history/' + b, v => { S.history = v || {}; if (tab !== 'board') render(); })
+    DB.on('history/' + b, v => { S.history = v || {}; if (tab !== 'board') render(); }),
+    DB.on('shift/' + b, v => { S.shift = v || {}; if (tab === 'cast') $('#main').innerHTML = ''; render(); })
   ];
 }
 
