@@ -95,6 +95,14 @@ main{padding:12px;max-width:1300px;margin:0 auto}
 .pickhist .ph.now i{background:var(--gold);color:#000}
 .pickhist .ph small{color:var(--muted);font-size:11px}
 .pickhist .arr{color:var(--muted)}
+/* 席ごとの付け回し：1席1行 */
+.chain{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px;width:100%}
+.chain:last-child{border-bottom:0}
+.chain .slot{font-size:11px;font-weight:800;background:#444;color:#fff;border-radius:6px;padding:1px 6px;margin-right:2px}
+.chain .ph{display:inline-flex;align-items:baseline;gap:3px;white-space:nowrap;font-weight:700}
+.chain .ph small{color:var(--muted);font-size:11px;font-weight:400}
+.chain .ph.now span{text-decoration:underline;text-decoration-color:var(--gold);text-underline-offset:3px}
+.chain .arr{color:var(--muted)}
 .pc em{display:block;font-style:normal;font-size:11px;font-weight:800;color:var(--amber)}
 .pc.been{border-color:var(--amber)}
 /* 成績 */
@@ -267,6 +275,7 @@ main{padding:12px;max-width:1300px;margin:0 auto}
 .chip.seat.c-jon{background:rgba(61,139,253,.15);color:#5ea2ff;border-color:var(--blue)}
 .chip small{font-weight:400;opacity:.8}
 .chip .rm{width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.12);font-size:13px;line-height:22px;text-align:center}
+.chip .rm.wide{width:auto;padding:0 9px;border-radius:99px;white-space:nowrap;background:var(--gold);color:#000;font-weight:800}
 .none{color:#555;font-size:13px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .field{margin-bottom:10px}
@@ -527,7 +536,17 @@ const extCount = s => { const l = extList(s); return { h: l.filter(e => e.k === 
 // 指名が最優先：本指名があれば指名卓、なければ場内の有無で判定
 const kindOf = s => keys(s.hon).length ? 'k-hon' : jonaiList(s).length ? 'k-jon' : 'k-free';
 // 女の子の使い方：本指名／場内／ヘルプ（指名卓で指名・場内以外に付いている子）／フリー
-const roleOf = (s, cid) => s.hon && s.hon[cid] ? 'c-hon' : jonaiList(s).some(j => j.c === cid) ? 'c-jon' : keys(s.hon).length ? 'c-help' : 'c-free';
+// ヘルプ＝本指名・場内指名の子の席（ポジション）で、その子の後に付いた子。
+// 指名卓でも枝のお客様の席に付いた子はフリー
+const roleOf = (s, cid) => {
+  if (s.hon && s.hon[cid]) return 'c-hon';
+  const jon = new Set(jonaiList(s).map(j => j.c));
+  if (jon.has(cid)) return 'c-jon';
+  const tl = tsukeList(s), mine = tl.filter(e => e.c === cid).pop();
+  if (!mine || !mine.slot) return 'c-free';
+  const afterNamed = tl.some(e => e.slot === mine.slot && e.c !== cid && e.in <= mine.in && ((s.hon && s.hon[e.c]) || jon.has(e.c)));
+  return afterNamed ? 'c-help' : 'c-free';
+};
 const ROLE_LABEL = { 'c-hon': '本指名', 'c-jon': '場内', 'c-help': 'ヘルプ', 'c-free': 'フリー' };
 const seatCount = s => keys(s.seat).length;
 // 今は卓にいない本指名・場内の子は薄く表示
@@ -558,11 +577,31 @@ const extText = (h, f, sep = '・') => [h ? 'ハーフ' + h : '', f ? '延長' +
 
 // 付け回しの記録（c=キャスト, in=付いた時刻, out=抜けた時刻, set=何セット目に付いたか）
 const tsukeList = s => Object.entries(s.tsuke || {}).map(([id, e]) => ({ id, ...e })).sort((a, b) => a.in - b.in);
-const tsukeEntry = (s, cid, at) => ({ c: cid, in: at, set: setNo(s).n, by: staff });
-function seatOn(tid, s, cid) {
+// 席（slot）＝お客様1人ぶんの並び。交代した子は同じ席に続けて記録する（例：席1 あい→しの→うち）
+const slotOf = (s, cid) => { const e = tsukeList(s).filter(x => x.c === cid).pop(); return e ? e.slot || 0 : 0; };
+function slotChains(s) {
+  const m = new Map();
+  tsukeList(s).forEach(e => { const k = e.slot || 0; if (!m.has(k)) m.set(k, []); m.get(k).push(e); });
+  return [...m.entries()].sort((a, b) => (a[0] || 99) - (b[0] || 99));
+}
+// 新しく付ける子の席：空いた席（前の子が抜けた席）の若い番号、なければ新しい席
+function nextSlot(s) {
+  const chains = slotChains(s).filter(([k]) => k);
+  const free = chains.filter(([, l]) => l[l.length - 1].out).map(([k]) => k);
+  return free.length ? Math.min(...free) : (chains.length ? Math.max(...chains.map(([k]) => k)) + 1 : 1);
+}
+const tsukeEntry = (s, cid, at, slot) => ({ c: cid, in: at, set: setNo(s).n, slot: slot || nextSlot(s), by: staff });
+function seatOn(tid, s, cid, slot) {
   if (s.seat && s.seat[cid]) return;
   DB.set(`tables/${tid}/seat/${cid}`, true);
-  DB.push(`tables/${tid}/tsuke`, tsukeEntry(s, cid, DB.now()));
+  DB.push(`tables/${tid}/tsuke`, tsukeEntry(s, cid, DB.now(), slot));
+}
+const CIRC = n => '①②③④⑤⑥⑦⑧⑨⑩⑪⑫'[n - 1] || n;
+// 席ごとの並びを1行ずつ
+function chainsHtml(s, now) {
+  const ch = slotChains(s);
+  if (!ch.length) return '<span class="none">まだ記録がありません</span>';
+  return ch.map(([k, l]) => `<div class="chain"><span class="slot">${k ? '席' + k : '他'}</span>${l.map(e => `<span class="ph ${e.out ? '' : 'now'}"><span class="${roleOf(s, e.c)}">${esc(castName(e.c))}</span><small>${e.set > 1 ? e.set + 'S ' : ''}${hm(e.in)}〜${e.out ? hm(e.out) : '着席中'}</small></span>`).join('<span class="arr">→</span>')}</div>`).join('');
 }
 function seatOff(tid, s, cid) {
   DB.set(`tables/${tid}/seat/${cid}`, null);
@@ -570,20 +609,24 @@ function seatOff(tid, s, cid) {
   if (open) DB.set(`tables/${tid}/tsuke/${open.id}/out`, DB.now());
 }
 // 女の子ごとの成績（1卓につき各1回まで数える）
-//  h=本指名の組、f=フリーで付いた（フリー卓・指名卓の枝＝ヘルプを含む）、j=そのうち場内をもらった
+//  h=本指名の組、f=フリーで付いた（フリー卓・指名卓の枝のフリーを含む）、j=そのうち場内をもらった、p=ヘルプで付いた
 function castStats(s) {
   const st = {}, add = (c, k) => { st[c] = st[c] || {}; st[c][k] = 1; };
   keys(s.hon).forEach(c => add(c, 'h'));
   const jon = new Set(jonaiList(s).map(j => j.c));
   new Set([...tsukeList(s).map(e => e.c), ...keys(s.seat), ...jon]).forEach(c => {
     if (s.hon && s.hon[c]) return;
-    add(c, 'f'); if (jon.has(c)) add(c, 'j');
+    if (jon.has(c)) { add(c, 'f'); add(c, 'j'); }   // ヘルプから場内になった子もフリーの機会として数える
+    else if (roleOf(s, c) === 'c-help') add(c, 'p');
+    else add(c, 'f');
   });
   return st;
 }
 // 本日の出勤（営業日ごと）。未登録の日は全員を対象にする
-const shiftSet = () => !!keys(S.shift).length;
-const onShift = cid => !shiftSet() || !!S.shift[cid];
+const ownShiftIds = () => keys(S.shift).filter(id => !id.startsWith('h_'));  // 系列店ヘルプは出勤登録の対象外
+const shiftSet = () => !!ownShiftIds().length;
+// 系列店ヘルプは出勤登録に関係なく毎日選べる
+const onShift = cid => cid.startsWith('h_') || !shiftSet() || !!S.shift[cid];
 const shiftCasts = () => activeCasts().filter(c => onShift(c.id));
 // 席の開始は5分刻み：押した時刻に一番近い0分・5分にそろえる
 const round5 = t => Math.round(t / 300000) * 300000;
@@ -617,7 +660,8 @@ const A = {
     const now = DB.now(), start = round5(now);
     const s = { sid: rid('s'), start, pressed: now, end: start + f.setMin * 60000, setMin: f.setMin, guests: f.guests, customer: f.customer.trim(), hon: f.hon, seat: f.seat, status: 'seated', by: staff };
     keys(f.hon).forEach(c => { s.seat[c] = true; });  // 本指名の子は着席の頭数に入れる
-    s.tsuke = {}; keys(s.seat).forEach(c => { s.tsuke[rid('k')] = { c, in: now, set: 1, by: staff }; });
+    // 席番号は本指名の子から順に1,2,3…
+    s.tsuke = {}; [...new Set([...keys(f.hon), ...keys(s.seat)])].forEach((c, i) => { s.tsuke[rid('k')] = { c, in: now, set: 1, slot: i + 1, by: staff }; });
     DB.set('tables/' + tid, s);
     const hn = keys(f.hon).map(castName).join('・');
     log(tid, `着席 ${f.guests}名 ${f.setMin}分 ${hm(start)}〜${hm(s.end)}` + (s.customer ? ` (${s.customer}様)` : '') + (hn ? ` 本指名:${hn}` : ''));
@@ -694,9 +738,19 @@ const A = {
   unpick() { sheet.pick = null; renderSheet(); },
   pickCast(cid) {
     const k = sheet.pick, tid = sheet.tid;
+    if (k === 'swap') {  // 交代：抜ける子と同じ席に続けて付ける
+      const s = sess(tid), from = sheet.swapFrom; if (!s || !from || cid === from) return;
+      if (s.seat && s.seat[cid]) { toast(`${castName(cid)} は既にこの卓に付いています`, 'warn'); return; }
+      const slot = slotOf(s, from) || nextSlot(s);
+      seatOff(tid, s, from); seatOn(tid, s, cid, slot);
+      log(tid, `交代 席${slot}: ${castName(from)} → ${castName(cid)}`);
+      sheet.pick = null; sheet.swapFrom = null; renderSheet(); return;
+    }
     if (k === 'fhon' || k === 'fseat') {
       const o = sheet.form[k === 'fhon' ? 'hon' : 'seat'];
       if (o[cid]) delete o[cid]; else o[cid] = true;
+      // 本指名を選んだ時点で「最初に付くキャスト」にも入れる（外したら一緒に外す）
+      if (k === 'fhon') { if (o[cid]) sheet.form.seat[cid] = true; else delete sheet.form.seat[cid]; }
       renderSheet(); return;
     }
     const s = sess(tid); if (!s) return;
@@ -725,7 +779,7 @@ const A = {
   statSort(k) { statQ.sort = k; renderStat(); },
   statCsv() {
     if (!statRows) return;
-    const rows = [['キャスト', '出勤日数', '本指名(組)', 'フリー付卓', '場内(卓)', '場内率(%)']].concat(statRows.rows.map(r => [castName(r.c), r.d, r.h, r.f, r.j, r.f ? Math.round(r.rate * 100) : '']));
+    const rows = [['キャスト', '出勤日数', '本指名(組)', 'フリー付卓', '場内(卓)', '場内率(%)', 'ヘルプ(卓)']].concat(statRows.rows.map(r => [castName(r.c), r.d, r.h, r.f, r.j, r.f ? Math.round(r.rate * 100) : '', r.p]));
     const csv = '﻿' + rows.map(r => r.map(v => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(',')).join('\r\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     a.download = `MC2_成績_${statRows.from}_${statRows.to}.csv`; a.click();
@@ -738,6 +792,7 @@ const A = {
     log(null, `出勤${on ? '追加' : '取消'}: ${castName(cid)}`);
   },
   pickAll() { sheet.all = !sheet.all; renderSheet(); },
+  swap(cid) { sheet.pick = 'swap'; sheet.swapFrom = cid; sheet.q = ''; renderSheet(); },
   rmSeat(cid) { const tid = sheet.tid, s = sess(tid); if (!s) return; seatOff(tid, s, cid); log(tid, `抜け: ${castName(cid)}`); },
   rmJon(jid) {
     const tid = sheet.tid, s = sess(tid); if (!s || !s.jonai || !s.jonai[jid]) return;
@@ -768,7 +823,7 @@ const A = {
       jon: jonaiList(s).map(j => j.c), jonN: jonaiList(s).map(j => castName(j.c) + ' ' + hm(j.at)),
       azu: al.join('・'),
       stats: castStats(s),
-      tsukeN: tsukeList(s).map(e => `${e.set || 1}S ${castName(e.c)} ${hm(e.in)}-${hm(e.out || now)}`),
+      tsukeN: slotChains(s).map(([k, l]) => (k ? '席' + k + ' ' : '') + l.map(e => `${castName(e.c)}(${hm(e.in)}-${hm(e.out || now)})`).join('→')),
       by: staff
     });
     DB.set('tables/' + tid, null);
@@ -923,10 +978,11 @@ function viewBoard() {
   const ts = C().tables.filter(visibleTable), mainCount = C().tables.filter(t => !parentOf(t)).length;
   let used = 0, guests = 0, over = 0;
   ts.forEach(t => { const s = sess(t.id); if (s) { used++; guests += +s.guests || 0; const st = stageOf(s, now); if (st === 'over' || st === 'warn' || st === 'nego') over++; } });
-  const busy = shiftCasts().filter(c => { const w = castWhere(c.id); return w.seat.length; }).length;
+  const ownShift = shiftCasts().filter(c => !isHelp(c));  // 待機人数は自店の子だけで数える
+  const busy = ownShift.filter(c => { const w = castWhere(c.id); return w.seat.length; }).length;
   return `<div class="viewbar"><div class="seg"><button class="${mode === 'map' ? 'on' : ''}" onclick="A.view('map')">マップ</button><button class="${mode === 'list' ? 'on' : ''}" onclick="A.view('list')">一覧</button></div>
     <span class="kpi">使用 <b>${used}</b>/${mainCount}卓</span><span class="kpi">客 <b>${guests}</b>名</span>
-    <span class="kpi ${over ? 'alert' : ''}">要対応 <b>${over}</b></span><span class="kpi">待機 <b>${shiftCasts().length - busy}</b>/${shiftCasts().length}名</span>
+    <span class="kpi ${over ? 'alert' : ''}">要対応 <b>${over}</b></span><span class="kpi">待機 <b>${ownShift.length - busy}</b>/${ownShift.length}名</span>
     <span style="margin-left:auto;display:flex;gap:4px">
       <button class="btn sm ${C().busy ? 'gold' : ''}" onclick="A.busy()">繁忙日モード ${C().busy ? 'ON' : 'OFF'}</button>
       ${mode === 'map' ? `<button class="btn sm" onclick="A.fit()">${LS.get('mapFit', false) ? '拡大' : '全体'}</button><button class="btn sm" onclick="A.editMap()">配置</button>` : ''}</span></div>
@@ -1039,7 +1095,7 @@ function viewSeatForm(t) {
   <div class="sec"><h3>本指名<button class="btn sm add" onclick="A.pick('fhon')">選択</button></h3>
     <div class="chips">${keys(f.hon).map(c => `<span class="chip hon">${esc(castName(c))}</span>`).join('') || '<span class="none">なし（フリー）</span>'}</div></div>
   <div class="sec"><h3>最初に付くキャスト<button class="btn sm add" onclick="A.pick('fseat')">選択</button></h3>
-    <div class="chips">${keys(f.seat).map(c => `<span class="chip seat">${esc(castName(c))}</span>`).join('') || '<span class="none">未選択</span>'}</div></div>
+    <div class="chips">${keys(f.seat).map(c => `<span class="chip seat ${f.hon[c] ? 'c-hon' : ''}">${f.hon[c] ? '<small class="role">本指名</small>' : ''}${esc(castName(c))}</span>`).join('') || '<span class="none">未選択</span>'}</div></div>
   ${subSec(t.id)}
   <p class="help">スタート時刻は5分刻み：押した時刻に近いほう（0分か5分）にそろえます。<br>いま押すと <b style="color:var(--text)">${hm(round5(DB.now()))} スタート → ${hm(round5(DB.now()) + f.setMin * 60000)} 終了</b></p>
   <button class="btn gold wide" onclick="A.seat()">着席スタート（${f.setMin}分）</button>`;
@@ -1072,9 +1128,10 @@ function viewSession(t, s) {
   <div class="sec"><h3><span class="lbl l-jon">場</span>場内指名 ${jl.length ? jl.length + '件' : ''}<button class="btn sm add" onclick="A.pick('jon')">＋場内指名</button></h3>
     <div class="chips">${jl.map(j => `<span class="chip jon">${esc(castName(j.c))} <small>${hm(j.at)}</small><button class="rm" onclick="A.rmJon('${j.id}')">×</button></span>`).join('') || '<span class="none">なし</span>'}</div></div>
   <div class="sec"><h3><span class="lbl l-seat">付</span>今ついているキャスト <b style="color:var(--gold)">${seatCount(s)}名</b><button class="btn sm add" onclick="A.pick('seat')">付け回し</button></h3>
-    <div class="chips">${keys(s.seat).map(c => { const e = tl.filter(x => x.c === c && !x.out).pop(); return `<span class="chip seat ${roleOf(s, c)}"><small class="role">${ROLE_LABEL[roleOf(s, c)]}</small>${esc(castName(c))}${e ? ` <small>${hm(e.in)}〜</small>` : ''}<button class="rm" onclick="A.rmSeat('${c}')">抜</button></span>`; }).join('') || '<span class="none">誰もついていません</span>'}</div></div>
+    <div class="chips">${keys(s.seat).sort((a, b) => slotOf(s, a) - slotOf(s, b)).map(c => { const e = tl.filter(x => x.c === c && !x.out).pop(); return `<span class="chip seat ${roleOf(s, c)}">${slotOf(s, c) ? `<small class="role">席${slotOf(s, c)}</small>` : ''}<small class="role">${ROLE_LABEL[roleOf(s, c)]}</small>${esc(castName(c))}${e ? ` <small>${hm(e.in)}〜</small>` : ''}<button class="rm wide" onclick="A.swap('${c}')">交代</button><button class="rm" onclick="A.rmSeat('${c}')">抜</button></span>`; }).join('') || '<span class="none">誰もついていません</span>'}</div>
+    <p class="help">女の子を入れ替えるときは「交代」→ 次の子を選ぶと、同じ席に続けて記録されます。</p></div>
   <div class="sec"><h3>付け回し履歴 <span style="color:var(--muted);font-weight:400;font-size:13px">（今のセット ${tl.filter(e => (e.set || 1) === setNo(s).n).length}回・合計 ${tl.length}回）</span></h3>
-    ${tl.length ? `<table class="tl">${tl.map(e => `<tr><td class="s">${e.set || 1}S</td><td class="${roleOf(s, e.c)}">${esc(castName(e.c))}</td><td class="t">${hm(e.in)}〜${e.out ? hm(e.out) : '<b>着席中</b>'}</td><td class="t">${fmtDur((e.out || now) - e.in)}</td></tr>`).join('')}</table>` : '<span class="none">まだ記録がありません</span>'}</div>
+    ${chainsHtml(s, now)}</div>
   <div class="sec"><h3><span class="lbl l-azu">預</span>お預かり物</h3>
     <div class="azugrid">
       <div class="field"><label>充電</label><div class="stepper"><button onclick="A.azu('charge',-1)">−</button><b>${(s.azu || {}).charge || 0}</b><button onclick="A.azu('charge',1)">＋</button><span style="color:var(--muted)">台</span></div></div>
@@ -1092,7 +1149,7 @@ function viewSession(t, s) {
   ${azuList(s).length ? `<div class="azuwarn">退店前にお返しする物：${esc(azuList(s).join('・'))}</div>` : ''}
   <button class="btn red wide" style="margin-top:6px" onclick="A.leave()">退店（会計完了）</button>`;
 }
-const PICK_TITLE = { hon: '本指名を追加／解除', jon: '場内指名するキャスト', seat: '付け回し（着席／抜け）', fhon: '本指名を選択', fseat: '最初に付くキャストを選択' };
+const PICK_TITLE = { hon: '本指名を追加／解除', jon: '場内指名するキャスト', seat: '付け回し（着席／抜け）', fhon: '本指名を選択', fseat: '最初に付くキャストを選択', swap: '交代する子を選択' };
 function viewPicker() {
   return `<div class="sh-head"><button class="btn sm" onclick="A.unpick()">← 戻る</button><h2 style="font-size:17px">${PICK_TITLE[sheet.pick]}</h2></div>
   <div style="display:flex;gap:6px"><input placeholder="名前で検索" value="${esc(sheet.q)}" oninput="A.q(this)">${shiftSet() ? `<button class="btn sm ${sheet.all ? 'gold' : ''}" style="white-space:nowrap" onclick="A.pickAll()">${sheet.all ? '出勤のみ' : '出勤外も表示'}</button>` : ''}</div>
@@ -1104,9 +1161,8 @@ function viewPicker() {
 // 付け回し・場内を選ぶ画面の上に、この卓に付いた順を出す（①あい 20:10-20:25 → ②みく 20:25〜）
 function pickHistory() {
   const s = sheet && sess(sheet.tid);
-  if (!s || !['seat', 'jon'].includes(sheet.pick)) return '';
-  const tl = tsukeList(s);
-  return `<div class="pickhist"><b>このお客様に付いた順</b>${tl.length ? tl.map((e, i) => `<span class="ph ${e.out ? '' : 'now'}"><i>${i + 1}</i><span class="${roleOf(s, e.c)}">${esc(castName(e.c))}</span> <small>${e.set || 1}S ${hm(e.in)}〜${e.out ? hm(e.out) : '着席中'}</small></span>`).join('<span class="arr">→</span>') : '<span class="none">まだ誰も付いていません</span>'}</div>`;
+  if (!s || !['seat', 'jon', 'swap'].includes(sheet.pick)) return '';
+  return `<div class="pickhist"><b>席ごとに付いた順</b>${chainsHtml(s, DB.now())}</div>`;
 }
 function renderPickGrid() {
   const g = $('#pgrid'); if (!g || !sheet) return;
@@ -1117,8 +1173,9 @@ function renderPickGrid() {
     const w = castWhere(c.id);
     const hint = w.seat.length ? '着席:' + w.seat.join(',') : w.hon.length ? '本指名:' + w.hon.join(',') : '待機';
     // この卓に前に付いたことがある子は「この卓 ①済」のように順番を出す
-    const tl = s ? tsukeList(s) : [], idx = tl.map((e, i) => e.c === c.id ? i + 1 : 0).filter(Boolean);
-    const been = idx.length && !(s.seat && s.seat[c.id]) ? `<em>この卓 ${idx.map(i => '①②③④⑤⑥⑦⑧⑨⑩'[i - 1] || i).join('')}済</em>` : '';
+    // この卓に前に付いたことがある子は「この卓 席1済」のように出す
+    const slots = s ? [...new Set(tsukeList(s).filter(e => e.c === c.id).map(e => e.slot || 0))] : [];
+    const been = slots.length && !(s.seat && s.seat[c.id]) ? `<em>この卓 ${slots.map(k => k ? '席' + k : '').join('・')}済</em>` : '';
     return `<button class="pc ${sel(c.id) ? 'sel' : ''} ${w.seat.length ? 'busy' : ''} ${been ? 'been' : ''}" onclick="A.pickCast('${c.id}')">${esc(c.name)}${been}<small>${esc(hint)}</small></button>`;
   }).join('');
 }
@@ -1127,14 +1184,14 @@ function renderPickGrid() {
 function viewShiftEdit() {
   const btn = c => `<button class="pc ${S.shift[c.id] ? 'sel' : ''}" onclick="A.shiftToggle('${c.id}')">${esc(c.name)}<small>${S.shift[c.id] ? '出勤' : '休み'}</small></button>`;
   const own = activeCasts().filter(c => !isHelp(c)), help = activeCasts().filter(isHelp);
-  return `<div class="shiftbar"><b>本日の出勤（${curBiz}）</b><span>${keys(S.shift).length}名</span><button class="btn sm gold" onclick="A.shiftEdit(false)">完了</button></div>
+  return `<div class="shiftbar"><b>本日の出勤（${curBiz}）</b><span>${own.filter(c => S.shift[c.id]).length}名</span><button class="btn sm gold" onclick="A.shiftEdit(false)">完了</button></div>
   <p class="help">出勤する子をタップ（もう一度で取消）。営業中でもいつでも変更できます。</p>
   <div class="pgrid">${own.map(btn).join('') || '<span class="none">キャストが未登録です（設定タブで登録）</span>'}</div>
   <h4>系列店ヘルプ</h4>
-  <div class="pgrid">${help.map(btn).join('')}</div>`;
+  <p class="help">${help.map(c => esc(c.name)).join('・')} は出勤登録をしなくても、毎日選べます。</p>`;
 }
 function viewCastShell() {
-  return `<div class="shiftbar"><b>本日の出勤</b><span>${shiftSet() ? keys(S.shift).length + '名' : '未登録'}</span><button class="btn sm ${shiftSet() ? '' : 'gold'}" onclick="A.shiftEdit(true)">出勤を${shiftSet() ? '変更' : '登録'}</button></div>
+  return `<div class="shiftbar"><b>本日の出勤</b><span>${shiftSet() ? ownShiftIds().length + '名' : '未登録'}</span><button class="btn sm ${shiftSet() ? '' : 'gold'}" onclick="A.shiftEdit(true)">出勤を${shiftSet() ? '変更' : '登録'}</button></div>
   <input class="search" placeholder="キャスト名で検索" value="${esc(castQuery)}" oninput="A.castQ(this)">
   <div class="list" id="castList"></div>
   <p class="help"><span class="lbl l-hon">本</span>本指名 <span class="lbl l-jon">場</span>場内指名 <span class="lbl l-seat">付</span>現在着席中 ／ 右側は本日の累計（本指名組数・場内指名数）</p>`;
@@ -1173,8 +1230,8 @@ function statRange() {
 async function loadStat() {
   const [from, to] = statRange(), sum = {}, seq = ++statSeq;
   statRows = null; statErr = ''; renderStat();
-  const row = c => sum[c] = sum[c] || { h: 0, f: 0, j: 0, d: 0 };
-  const add = st => Object.entries(st || {}).forEach(([c, v]) => { const a = row(c); a.h += v.h || 0; a.f += v.f || 0; a.j += v.j || 0; });
+  const row = c => sum[c] = sum[c] || { h: 0, f: 0, j: 0, d: 0, p: 0 };
+  const add = st => Object.entries(st || {}).forEach(([c, v]) => { const a = row(c); a.h += v.h || 0; a.f += v.f || 0; a.j += v.j || 0; a.p += v.p || 0; });
   let n = 0;
   try {
     const [days, shifts] = await Promise.all([DB.range('history', from, to), DB.range('shift', from, to)]);
@@ -1203,12 +1260,12 @@ function renderStat() {
   if (!statRows) { el.innerHTML = '<p class="help">集計中…（通信状況により数秒かかります）</p>'; return; }
   const { from, to, n, rows } = statRows, sort = statQ.sort || 'rate';
   rows.sort((a, b) => sort === 'h' ? b.h - a.h || b.rate - a.rate : sort === 'f' ? b.f - a.f : sort === 'd' ? b.d - a.d : b.rate - a.rate || b.f - a.f);
-  const tot = rows.reduce((t, r) => ({ h: t.h + r.h, f: t.f + r.f, j: t.j + r.j, d: t.d + r.d }), { h: 0, f: 0, j: 0, d: 0 });
+  const tot = rows.reduce((t, r) => ({ h: t.h + r.h, f: t.f + r.f, j: t.j + r.j, d: t.d + r.d, p: t.p + r.p }), { h: 0, f: 0, j: 0, d: 0, p: 0 });
   const th = (k, l) => `<th class="n sortable ${sort === k ? 'on' : ''}" onclick="A.statSort('${k}')">${l}</th>`;
   el.innerHTML = `<div style="display:flex;align-items:center;margin:10px 0 6px"><span style="color:var(--muted);font-size:12px">${from} 〜 ${to}・${n}卓</span><button class="btn sm" style="margin-left:auto" onclick="A.statCsv()">CSV出力</button></div>
-  <div class="list"><table class="rk stat"><tr><th>キャスト</th>${th('d', '出勤日数')}${th('h', '本指名')}${th('f', 'フリー付卓')}<th class="n">場内</th>${th('rate', '場内率')}</tr>
-  ${rows.map(r => `<tr><td>${esc(castName(r.c))}</td><td class="n">${r.d}日</td><td class="n c-hon">${r.h}</td><td class="n">${r.f}</td><td class="n c-jon">${r.j}</td><td class="n"><b>${pct(r.rate)}</b>${r.f ? `<span class="bar"><i style="width:${Math.round(r.rate * 100)}%"></i></span>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="none">この期間の記録はまだありません</td></tr>'}
-  ${rows.length ? `<tr class="tot"><td>合計</td><td class="n">${tot.d}日</td><td class="n">${tot.h}</td><td class="n">${tot.f}</td><td class="n">${tot.j}</td><td class="n"><b>${pct(tot.f ? tot.j / tot.f : -1)}</b></td></tr>` : ''}</table></div>`;
+  <div class="list"><table class="rk stat"><tr><th>キャスト</th>${th('d', '出勤日数')}${th('h', '本指名')}${th('f', 'フリー付卓')}<th class="n">場内</th>${th('rate', '場内率')}<th class="n">ヘルプ</th></tr>
+  ${rows.map(r => `<tr><td>${esc(castName(r.c))}</td><td class="n">${r.d}日</td><td class="n c-hon">${r.h}</td><td class="n">${r.f}</td><td class="n c-jon">${r.j}</td><td class="n"><b>${pct(r.rate)}</b>${r.f ? `<span class="bar"><i style="width:${Math.round(r.rate * 100)}%"></i></span>` : ''}</td><td class="n c-help">${r.p}</td></tr>`).join('') || '<tr><td colspan="7" class="none">この期間の記録はまだありません</td></tr>'}
+  ${rows.length ? `<tr class="tot"><td>合計</td><td class="n">${tot.d}日</td><td class="n">${tot.h}</td><td class="n">${tot.f}</td><td class="n">${tot.j}</td><td class="n"><b>${pct(tot.f ? tot.j / tot.f : -1)}</b></td><td class="n">${tot.p}</td></tr>` : ''}</table></div>`;
 }
 function histList() { return Object.values(S.history || {}).sort((a, b) => b.out - a.out); }
 function viewHist() {
@@ -1232,7 +1289,7 @@ function viewHist() {
   <div class="list">${hs.map(h => `<div class="li"><span class="t">${hm(h.start)}<br>${hm(h.out)}</span><span class="m"><b>${esc(h.table)}</b> ${h.guests}名 ${esc(h.customer || '')} ・滞在${fmtDur(h.out - h.start)}${extText(h.extH, h.extF)}
     ${(h.honN || []).length ? `<br><span class="lbl l-hon">本</span>${esc(h.honN.join('、'))}` : ''}
     ${(h.jonN || []).length ? `<br><span class="lbl l-jon">場</span>${esc(h.jonN.join('、'))}` : ''}
-    ${(h.tsukeN || []).length ? `<br><span class="lbl l-seat">付</span>${esc(h.tsukeN.join('、'))}` : ''}
+    ${(h.tsukeN || []).map(x => `<br><span class="lbl l-seat">付</span>${esc(x)}`).join('')}
     ${h.azu ? `<br><span class="lbl l-azu">預</span>${esc(h.azu)}（返却確認済）` : ''}
     ${h.memo ? `<br><span class="by">メモ: ${esc(h.memo)}</span>` : ''}</span></div>`).join('') || '<div class="li"><span class="m none">なし</span></div>'}</div>
   <h4>操作ログ（誰が・いつ・何をしたか）</h4>
