@@ -81,6 +81,25 @@ main .wrap{padding-block:14px 40px;display:flex;flex-direction:column;gap:14px}
 .tag{display:inline-flex;align-items:center;gap:4px;padding:4px 6px 4px 10px;border-radius:999px;background:var(--accent-soft);font-size:14px;font-weight:500}
 .tag button{appearance:none;border:0;background:none;color:var(--muted);font:inherit;cursor:pointer;padding:0 4px;border-radius:999px}
 .tag button.arm{background:var(--todo);color:#fff;font-size:12px;padding:1px 8px}
+.groups{display:grid;grid-template-columns:1fr;gap:10px}
+@media (min-width:760px){.groups{grid-template-columns:1fr 1fr}}
+.grp{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.grp.k-todo{border-left-color:var(--todo)} .grp.k-fill{border-left-color:var(--fill)} .grp.k-wait{border-left-color:var(--wait)}
+.grp h3{margin:0;font-size:14px;display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.grp h3 b{font-family:var(--f-num);font-size:20px;font-variant-numeric:tabular-nums}
+.names{display:flex;flex-wrap:wrap;gap:6px}
+.nm{appearance:none;font:inherit;font-size:14px;font-weight:700;border:0;border-radius:6px;padding:3px 10px;cursor:pointer}
+.alldone{font-size:13px;color:var(--done);font-weight:700}
+.mx-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+table.mx{border-collapse:collapse;width:100%;font-size:13px}
+.mx th,.mx td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}
+.mx th{font-size:12px;color:var(--muted);position:sticky;top:0;background:var(--surface)}
+.mx td.n{text-align:left;font-weight:700}
+.mx td.no{font-family:var(--f-num);color:var(--muted);font-variant-numeric:tabular-nums}
+.mx td.ok{color:var(--done);font-weight:700}
+.mx td.ng{background:var(--todo-bg);color:var(--todo)}
+.mx td small{display:block;font-size:10px;color:var(--muted);font-weight:500}
+.mx th.grp-b{border-right:2px solid var(--line)} .mx td.grp-b{border-right:2px solid var(--line)}
 .login{max-width:380px;margin:12vh auto 0;display:flex;flex-direction:column;gap:12px}
 .login label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);font-weight:700}
 .login input{font-size:16px;padding:10px}
@@ -110,6 +129,7 @@ main .wrap{padding-block:14px 40px;display:flex;flex-direction:column;gap:14px}
       </label>
     </div>
     <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-v="todo">残り一覧</button>
       <button class="tab" role="tab" data-v="bottle">1800ボトルだし</button>
       <button class="tab" role="tab" data-v="contract">業務委託契約書</button>
       <button class="tab" role="tab" data-v="setup">担当者・キャスト</button>
@@ -122,6 +142,7 @@ main .wrap{padding-block:14px 40px;display:flex;flex-direction:column;gap:14px}
     <div id="summary" class="summary"></div>
     <div id="hint" class="note"></div>
     <div id="list" class="list"><div class="empty">読み込んでいます…</div></div>
+    <div id="todo" hidden></div>
     <div id="setup" hidden></div>
   </div>
 </main>
@@ -167,7 +188,7 @@ main .wrap{padding-block:14px 40px;display:flex;flex-direction:column;gap:14px}
   const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 
   let ref=null, casts=[], data={}, staff=DEFAULT_STAFF.slice(), loaded=false;
-  let view=LS.get('fu-view','bottle'), filter='all', me=LS.get('staff','');
+  let view=LS.get('fu-view','todo'), filter='all', me=LS.get('staff','');
   const armed=new Set();
 
   function showStatus(t){const s=$('status');s.textContent=t||'';s.hidden=!t;}
@@ -193,7 +214,7 @@ main .wrap{padding-block:14px 40px;display:flex;flex-direction:column;gap:14px}
   }
   function renderSummary(rows){
     const box=$('summary');
-    if(view==='setup'){box.innerHTML='';$('hint').textContent='';return;}
+    if(view==='setup'||view==='todo'){box.innerHTML='';$('hint').textContent=view==='todo'?'名前を押すと、そのキャストの記入画面に移ります。':'';return;}
     const fn=view==='bottle'?bStatus:cStatus;
     const order=view==='bottle'?['未説明','説明済み']:['未説明','記入待ち','押印待ち','完了'];
     const cnt={};rows.forEach(r=>{const s=fn(r);cnt[s]=(cnt[s]||0)+1});
@@ -205,7 +226,7 @@ main .wrap{padding-block:14px 40px;display:flex;flex-direction:column;gap:14px}
   }
   function renderList(rows){
     const list=$('list');
-    if(view==='setup'){list.hidden=true;return;}
+    if(view==='setup'||view==='todo'){list.hidden=true;return;}
     list.hidden=false;
     if(!loaded)return;
     if(!rows.length){list.innerHTML='<div class="empty">在籍キャストが見つかりません。テーブル管理アプリでキャストを登録してください。</div>';return;}
@@ -239,6 +260,28 @@ main .wrap{padding-block:14px 40px;display:flex;flex-direction:column;gap:14px}
       </div>
       <button class="ghost" id="logout">この端末からログアウト</button>`;
   }
+  function renderTodo(rows){
+    const box=$('todo');
+    if(view!=='todo'){box.hidden=true;return;}
+    box.hidden=false;
+    if(!loaded){box.innerHTML='<div class="empty">読み込んでいます…</div>';return;}
+    const groups=[
+      ['1800ボトルだし','未説明','todo','bottle',rows.filter(r=>!r.b_done)],
+      ['業務委託契約書','未説明','todo','contract',rows.filter(r=>cStatus(r)==='未説明')],
+      ['業務委託契約書','記入待ち','fill','contract',rows.filter(r=>cStatus(r)==='記入待ち')],
+      ['業務委託契約書','押印待ち','wait','contract',rows.filter(r=>cStatus(r)==='押印待ち')]
+    ];
+    const g=groups.map(([t,s,k,v,list])=>`<section class="grp k-${list.length?k:'done'}">
+        <h3><span>${t}　<span class="pill s-${list.length?k:'done'}">${s}</span></span><b>${list.length}<small style="font-size:12px">名</small></b></h3>
+        ${list.length?`<div class="names">${list.map(r=>`<button class="nm s-${k}" data-go="${v}" data-f="${s}" data-id="${esc(r.id)}">${esc(r.name)}</button>`).join('')}</div>`:'<div class="alldone">✓ 全員済み</div>'}
+      </section>`).join('');
+    const cell=(r,k)=>r[k+'_done']?`<td class="ok">✓<small>${esc(r[k+'_staff']||'')}</small></td>`:'<td class="ng">—</td>';
+    const mx=`<div class="mx-wrap"><table class="mx">
+      <thead><tr><th>No</th><th style="text-align:left">名前</th><th class="grp-b">ボトルだし</th><th>契約 説明</th><th>記入</th><th>押印</th></tr></thead>
+      <tbody>${rows.map((r,i)=>`<tr><td class="no">${String(i+1).padStart(2,'0')}</td><td class="n">${esc(r.name)}</td>${cell(r,'b').replace('<td class="','<td class="grp-b ')}${cell(r,'c1')}${cell(r,'c2')}${cell(r,'c3')}</tr>`).join('')}</tbody>
+    </table></div>`;
+    box.innerHTML=`<div style="display:flex;flex-direction:column;gap:14px"><div class="groups">${g}</div><h2 style="margin:4px 0 0;font-size:15px">全員の進み具合</h2>${mx}</div>`;
+  }
   function renderMe(){
     const names=staff.slice(); if(me&&!names.includes(me))names.push(me);
     $('meSel').innerHTML='<option value="">選んでください</option>'+names.map(n=>`<option${n===me?' selected':''}>${esc(n)}</option>`).join('');
@@ -251,8 +294,15 @@ main .wrap{padding-block:14px 40px;display:flex;flex-direction:column;gap:14px}
     if(a&&a.matches&&a.matches('input.memo,input[type=date],#addStaff')){deferred=true;return;}
     const rows=rowsView();
     document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',t.dataset.v===view));
-    renderMe();renderSummary(rows);renderList(rows);renderSetup(rows);
+    renderMe();renderSummary(rows);renderList(rows);renderTodo(rows);renderSetup(rows);
   }
+  // 残り一覧の名前 → その画面のそのキャストへ
+  document.addEventListener('click',e=>{
+    const b=e.target.closest('[data-go]');if(!b)return;
+    view=b.dataset.go;filter=b.dataset.f;LS.set('fu-view',view);render();
+    const card=document.getElementById('memo-'+view+'-'+b.dataset.id);
+    if(card){const el=card.closest('.card');el.scrollIntoView({block:'center'});el.style.outline='2px solid var(--accent)';setTimeout(()=>{el.style.outline=''},1500);}
+  });
 
   document.querySelector('.tabs').addEventListener('click',e=>{const t=e.target.closest('.tab');if(!t)return;view=t.dataset.v;filter='all';LS.set('fu-view',view);render();});
   $('summary').addEventListener('click',e=>{const c=e.target.closest('.chip');if(!c)return;filter=c.dataset.f;render();});
