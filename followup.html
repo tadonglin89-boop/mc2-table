@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MC2 後追いリスト</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Inter:wght@500;600;700&display=swap">
+<style>
+:root{
+  --bg:#f4f3f7; --surface:#ffffff; --ink:#1d1a26; --muted:#6b6678; --line:#e2dfe9;
+  --accent:#6d2a5c; --accent-ink:#ffffff; --accent-soft:#f3e6ef;
+  --todo:#c23a3a; --todo-bg:#fbe9e9; --wait:#a86b00; --wait-bg:#fdf2dc;
+  --fill:#2d5fa8; --fill-bg:#e5eefb; --done:#2e7d4f; --done-bg:#e3f3e9;
+  --f-text:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+  --f-num:"Inter","Zen Kaku Gothic New",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#15131b; --surface:#1f1c27; --ink:#eeebf3; --muted:#a39db0; --line:#332f3e;
+  --accent:#d58bbf; --accent-ink:#1d1a26; --accent-soft:#3a2535;
+  --todo:#f08080; --todo-bg:#3a1f22; --wait:#f0c060; --wait-bg:#3a3019;
+  --fill:#8cb4f0; --fill-bg:#1d2a40; --done:#7fd3a0; --done-bg:#1a3326; color-scheme:dark}}
+*{box-sizing:border-box}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-text);font-size:15px;line-height:1.5}
+[hidden]{display:none!important}
+.wrap{max-width:980px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+header .wrap{padding-block:12px 0;display:flex;flex-direction:column;gap:10px}
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+h1{margin:0;font-size:19px;font-weight:700;letter-spacing:.02em}
+h1 small{font-family:var(--f-num);font-size:12px;color:var(--accent);font-weight:700;letter-spacing:.12em;margin-right:6px}
+.conn{font-size:11px;color:var(--muted);margin-left:8px;font-weight:500}
+.conn.ok{color:var(--done)}
+.me{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+select,input[type=text],input[type=password],input[type=date]{font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:0}
+.me select{font-weight:700}
+.me.need select{border-color:var(--todo);background:var(--todo-bg)}
+.tabs{display:flex;gap:4px;overflow-x:auto}
+.tab{appearance:none;border:0;background:none;font:inherit;font-weight:700;font-size:14px;color:var(--muted);padding:8px 12px;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap}
+.tab[aria-selected=true]{color:var(--accent);border-bottom-color:var(--accent)}
+main .wrap{padding-block:14px 40px;display:flex;flex-direction:column;gap:14px}
+.summary{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:baseline;gap:6px;padding:6px 12px;border-radius:999px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;background:var(--surface);color:var(--ink);border:1px solid var(--line)}
+.chip b{font-family:var(--f-num);font-size:16px;font-variant-numeric:tabular-nums}
+.chip[aria-pressed=true]{outline:2px solid var(--accent);outline-offset:1px}
+.s-todo{background:var(--todo-bg);color:var(--todo);border-color:transparent}
+.s-fill{background:var(--fill-bg);color:var(--fill);border-color:transparent}
+.s-wait{background:var(--wait-bg);color:var(--wait);border-color:transparent}
+.s-done{background:var(--done-bg);color:var(--done);border-color:transparent}
+.note{font-size:13px;color:var(--muted)}
+.banner{padding:10px 12px;border-radius:10px;background:var(--wait-bg);color:var(--ink);font-size:13px}
+.list{display:grid;grid-template-columns:1fr;gap:10px}
+@media (min-width:760px){.list{grid-template-columns:1fr 1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card.k-todo{border-left-color:var(--todo)} .card.k-fill{border-left-color:var(--fill)}
+.card.k-wait{border-left-color:var(--wait)} .card.k-done{border-left-color:var(--done)}
+.head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.name{font-size:17px;font-weight:700}
+.name .no{font-family:var(--f-num);font-size:12px;color:var(--muted);margin-right:6px;font-variant-numeric:tabular-nums}
+.pill{font-size:12px;font-weight:700;padding:2px 10px;border-radius:999px}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.steps.one{grid-template-columns:1fr}
+.step{display:flex;flex-direction:column;gap:4px;min-width:0}
+.btn{appearance:none;font:inherit;font-weight:700;font-size:14px;border-radius:8px;padding:8px 6px;cursor:pointer;border:1.5px dashed var(--line);background:var(--bg);color:var(--muted);text-align:center}
+.btn.on{border:1.5px solid var(--done);background:var(--done-bg);color:var(--done)}
+.btn:focus-visible,.tab:focus-visible,.chip:focus-visible,select:focus-visible,input:focus-visible,.primary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.metas{display:flex;flex-direction:column;gap:4px}
+.meta{display:flex}
+.meta select,.meta input{flex:1;width:100%;font-size:12px;padding:3px 4px}
+.meta input[type=date]{font-family:var(--f-num)}
+.memo{width:100%;font-size:13px}
+.empty{grid-column:1/-1;padding:28px 16px;text-align:center;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:10px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.panel h2{margin:0;font-size:15px}
+.addrow{display:flex;gap:6px}
+.addrow input{flex:1}
+.primary{appearance:none;font:inherit;font-weight:700;border:0;border-radius:8px;padding:8px 16px;background:var(--accent);color:var(--accent-ink);cursor:pointer}
+.ghost{appearance:none;font:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:6px 12px;background:none;color:var(--muted);cursor:pointer;align-self:flex-start}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{display:inline-flex;align-items:center;gap:4px;padding:4px 6px 4px 10px;border-radius:999px;background:var(--accent-soft);font-size:14px;font-weight:500}
+.tag button{appearance:none;border:0;background:none;color:var(--muted);font:inherit;cursor:pointer;padding:0 4px;border-radius:999px}
+.tag button.arm{background:var(--todo);color:#fff;font-size:12px;padding:1px 8px}
+.login{max-width:380px;margin:12vh auto 0;display:flex;flex-direction:column;gap:12px}
+.login label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);font-weight:700}
+.login input{font-size:16px;padding:10px}
+.err{color:var(--todo);font-size:13px;font-weight:700}
+</style>
+</head>
+<body>
+
+<div id="loginView" class="wrap" hidden>
+  <form class="login panel" id="loginForm">
+    <h1><small>MC2</small>後追いリスト</h1>
+    <div class="note">テーブル管理アプリと同じ店舗コードで入ります。</div>
+    <label>店舗コード<input type="password" id="lCode" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
+    <label>あなたの名前<input type="text" id="lName" placeholder="例：林"></label>
+    <div class="err" id="lErr"></div>
+    <button class="primary">はじめる</button>
+  </form>
+</div>
+
+<div id="appView" hidden>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <h1><small>MC2</small>後追いリスト<span class="conn" id="conn">接続中…</span></h1>
+      <label class="me" id="meBox">あなた
+        <select id="meSel" aria-label="あなたの名前"></select>
+      </label>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-v="bottle">1800ボトルだし</button>
+      <button class="tab" role="tab" data-v="contract">業務委託契約書</button>
+      <button class="tab" role="tab" data-v="setup">担当者・キャスト</button>
+    </div>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <div id="status" class="banner" hidden></div>
+    <div id="summary" class="summary"></div>
+    <div id="hint" class="note"></div>
+    <div id="list" class="list"><div class="empty">読み込んでいます…</div></div>
+    <div id="setup" hidden></div>
+  </div>
+</main>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+(function(){
+  // テーブル管理アプリと同じ Firebase・同じ店舗コードの保存先を使う
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyD96ujctbpkPGb2DeoBD1XjHL1sTzEjPmM",
+    authDomain: "mc2-table.firebaseapp.com",
+    databaseURL: "https://mc2-table-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "mc2-table",
+    storageBucket: "mc2-table.firebasestorage.app",
+    messagingSenderId: "597413690023",
+    appId: "1:597413690023:web:5e603a971a38116a323982"
+  };
+  const DEFAULT_STAFF=['林','照内'];
+  const normCode = code => code.normalize('NFKC').replace(/\s+/g,'').toLowerCase();
+  function storeKey(code){
+    const h=(str,seed)=>{
+      let h1=0xdeadbeef^seed,h2=0x41c6ce57^seed;
+      for(let i=0;i<str.length;i++){const ch=str.charCodeAt(i);h1=Math.imul(h1^ch,2654435761);h2=Math.imul(h2^ch,1597334677);}
+      h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
+      h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
+      return (4294967296*(2097151&h2)+(h1>>>0)).toString(16).padStart(14,'0');
+    };
+    const s='MC2::'+normCode(code);
+    return 'mc2_'+h(s,1)+h(s,7)+h(s,13)+h(s,29);
+  }
+  // テーブル管理アプリと同じ localStorage キー（同じ端末ならログイン不要）
+  const LS={get(k,d){try{const v=localStorage.getItem('mc2:'+k);return v===null?d:JSON.parse(v)}catch(e){return d}},
+            set(k,v){try{localStorage.setItem('mc2:'+k,JSON.stringify(v))}catch(e){}}};
+  const vals=o=>o?(Array.isArray(o)?o.filter(Boolean):Object.values(o)):[];
+
+  const STEPS=[['c1','説明済み'],['c2','記入済み<br><small>押印未</small>'],['c3','押印済み<br><small>完了</small>']];
+  const KIND={'未説明':'todo','記入待ち':'fill','押印待ち':'wait','完了':'done','説明済み':'done'};
+  const $=id=>document.getElementById(id);
+  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+
+  let ref=null, casts=[], data={}, staff=DEFAULT_STAFF.slice(), loaded=false;
+  let view=LS.get('fu-view','bottle'), filter='all', me=LS.get('staff','');
+  const armed=new Set();
+
+  function showStatus(t){const s=$('status');s.textContent=t||'';s.hidden=!t;}
+  const fail=e=>showStatus('保存できませんでした：'+(e&&e.message||'')+'　通信状態を確認してもう一度押してください。');
+  const updRow=(id,patch)=>{data[id]=Object.assign({},data[id],patch);render();ref.child('rows/'+id).update(patch).catch(fail);};
+  const saveStaff=names=>{staff=names;render();ref.child('staff').set(names).catch(fail);};
+
+  const rowsView=()=>casts.map(c=>Object.assign({id:c.id,name:c.name},data[c.id]||{}));
+  const cStatus=r=>r.c3_done?'完了':r.c2_done?'押印待ち':r.c1_done?'記入待ち':'未説明';
+  const bStatus=r=>r.b_done?'説明済み':'未説明';
+
+  function staffSelect(val,attrs){
+    const names=staff.slice(); if(val&&!names.includes(val))names.push(val);
+    return `<select ${attrs} aria-label="担当者"><option value="">担当者</option>${names.map(n=>`<option${n===val?' selected':''}>${esc(n)}</option>`).join('')}</select>`;
+  }
+  function stepBlock(r,key,label){
+    const on=!!r[key+'_done'];
+    return `<div class="step">
+      <button class="btn${on?' on':''}" data-act="toggle" data-id="${esc(r.id)}" data-k="${key}" aria-pressed="${on}">${on?'✓ ':''}${label}</button>
+      ${on?`<div class="metas"><div class="meta">${staffSelect(r[key+'_staff']||'',`data-act="staff" data-id="${esc(r.id)}" data-k="${key}"`)}</div>
+      <div class="meta"><input type="date" value="${esc(r[key+'_date']||'')}" data-act="date" data-id="${esc(r.id)}" data-k="${key}" aria-label="日付"></div></div>`:''}
+    </div>`;
+  }
+  function renderSummary(rows){
+    const box=$('summary');
+    if(view==='setup'){box.innerHTML='';$('hint').textContent='';return;}
+    const fn=view==='bottle'?bStatus:cStatus;
+    const order=view==='bottle'?['未説明','説明済み']:['未説明','記入待ち','押印待ち','完了'];
+    const cnt={};rows.forEach(r=>{const s=fn(r);cnt[s]=(cnt[s]||0)+1});
+    box.innerHTML=`<button class="chip" data-f="all" aria-pressed="${filter==='all'}">全員 <b>${rows.length}</b></button>`+
+      order.map(s=>`<button class="chip s-${KIND[s]}" data-f="${s}" aria-pressed="${filter===s}">${s} <b>${cnt[s]||0}</b></button>`).join('');
+    $('hint').textContent=view==='bottle'
+      ?'説明したら「説明済み」を押す → 担当者（あなた）と今日の日付が入ります。'
+      :'進んだ段階のボタンを押す → 担当者（あなた）と今日の日付が入ります。担当者・日付は後から変えられます。';
+  }
+  function renderList(rows){
+    const list=$('list');
+    if(view==='setup'){list.hidden=true;return;}
+    list.hidden=false;
+    if(!loaded)return;
+    if(!rows.length){list.innerHTML='<div class="empty">在籍キャストが見つかりません。テーブル管理アプリでキャストを登録してください。</div>';return;}
+    const fn=view==='bottle'?bStatus:cStatus;
+    const shown=rows.filter(r=>filter==='all'||fn(r)===filter);
+    if(!shown.length){list.innerHTML=`<div class="empty">「${esc(filter)}」のキャストはいません。</div>`;return;}
+    list.innerHTML=shown.map(r=>{
+      const s=fn(r),k=KIND[s],no=rows.indexOf(r)+1,nk=view==='bottle'?'b_note':'c_note';
+      const body=view==='bottle'?`<div class="steps one">${stepBlock(r,'b','説明済み')}</div>`:`<div class="steps">${STEPS.map(([key,l])=>stepBlock(r,key,l)).join('')}</div>`;
+      return `<article class="card k-${k}">
+        <div class="head"><div class="name"><span class="no">${String(no).padStart(2,'0')}</span>${esc(r.name)}</div><span class="pill s-${k}">${s}</span></div>
+        ${body}
+        <input type="text" class="memo" id="memo-${view}-${esc(r.id)}" placeholder="備考（例：次回出勤時に持参）" value="${esc(r[nk]||'')}" data-act="note" data-id="${esc(r.id)}" data-k="${nk}">
+      </article>`;
+    }).join('');
+  }
+  function renderSetup(rows){
+    const box=$('setup');
+    if(view!=='setup'){box.hidden=true;return;}
+    box.hidden=false;
+    box.innerHTML=`<div class="panel">
+        <h2>担当者（黒服）</h2>
+        <div class="note">担当者の選択肢と、上の「あなた」に出る名前です。</div>
+        <div class="tags">${staff.map(n=>{const a=armed.has(n);return `<span class="tag">${esc(n)}<button data-act="del" data-key="${esc(n)}" class="${a?'arm':''}" aria-label="${esc(n)}を削除">${a?'削除する':'×'}</button></span>`}).join('')||'<span class="note">まだいません。</span>'}</div>
+        <form class="addrow" id="staffForm"><input type="text" id="addStaff" placeholder="担当者の名前"><button class="primary">追加</button></form>
+      </div>
+      <div class="panel">
+        <h2>在籍キャスト（${rows.length}名）</h2>
+        <div class="note">テーブル管理アプリの在籍キャスト（ヘルプ除く）を自動で表示しています。入店・退店はテーブル管理アプリ側で登録すると、ここにも反映されます。</div>
+        <div class="tags">${rows.map(r=>`<span class="tag" style="padding-right:10px">${esc(r.name)}</span>`).join('')}</div>
+      </div>
+      <button class="ghost" id="logout">この端末からログアウト</button>`;
+  }
+  function renderMe(){
+    const names=staff.slice(); if(me&&!names.includes(me))names.push(me);
+    $('meSel').innerHTML='<option value="">選んでください</option>'+names.map(n=>`<option${n===me?' selected':''}>${esc(n)}</option>`).join('');
+    $('meBox').classList.toggle('need',!me);
+  }
+  let deferred=false;
+  document.addEventListener('focusout',()=>{if(deferred){deferred=false;setTimeout(render,0);}});
+  function render(){
+    const a=document.activeElement;
+    if(a&&a.matches&&a.matches('input.memo,input[type=date],#addStaff')){deferred=true;return;}
+    const rows=rowsView();
+    document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',t.dataset.v===view));
+    renderMe();renderSummary(rows);renderList(rows);renderSetup(rows);
+  }
+
+  document.querySelector('.tabs').addEventListener('click',e=>{const t=e.target.closest('.tab');if(!t)return;view=t.dataset.v;filter='all';LS.set('fu-view',view);render();});
+  $('summary').addEventListener('click',e=>{const c=e.target.closest('.chip');if(!c)return;filter=c.dataset.f;render();});
+  $('meSel').addEventListener('change',e=>{me=e.target.value;LS.set('staff',me);render();});
+  document.addEventListener('click',e=>{
+    if(e.target.id==='logout'){try{localStorage.removeItem('mc2:code')}catch(_){}location.reload();return;}
+    const b=e.target.closest('[data-act]');if(!b||!ref)return;
+    if(b.dataset.act==='toggle'){
+      const r=rowsView().find(x=>x.id===b.dataset.id);if(!r)return;const k=b.dataset.k,on=!r[k+'_done'];
+      updRow(r.id,on?{[k+'_done']:true,[k+'_staff']:me||'',[k+'_date']:today()}:{[k+'_done']:false,[k+'_staff']:'',[k+'_date']:''});
+      if(on&&!me)showStatus('上の「あなた」で自分の名前を選ぶと、担当者が自動で入ります。');
+    }else if(b.dataset.act==='del'){
+      const key=b.dataset.key;
+      if(!armed.has(key)){armed.clear();armed.add(key);render();setTimeout(()=>{if(armed.delete(key))render();},4000);return;}
+      armed.delete(key);saveStaff(staff.filter(n=>n!==key));
+    }
+  });
+  document.addEventListener('change',e=>{
+    const el=e.target,act=el.dataset&&el.dataset.act;if(!act||!ref)return;
+    if(act==='staff')updRow(el.dataset.id,{[el.dataset.k+'_staff']:el.value});
+    else if(act==='date')updRow(el.dataset.id,{[el.dataset.k+'_date']:el.value});
+    else if(act==='note')updRow(el.dataset.id,{[el.dataset.k]:el.value});
+  });
+  document.addEventListener('submit',e=>{
+    if(e.target.id==='staffForm'){e.preventDefault();const v=$('addStaff').value.trim();if(!v||staff.includes(v))return;$('addStaff').value='';$('addStaff').blur();saveStaff(staff.concat(v));}
+  });
+
+  // ログイン
+  $('loginForm').addEventListener('submit',e=>{
+    e.preventDefault();
+    const code=$('lCode').value.trim(),name=$('lName').value.trim();
+    if(normCode(code).length<8){$('lErr').textContent='店舗コードは8文字以上です';return;}
+    if(!name){$('lErr').textContent='名前を入力してください';return;}
+    LS.set('code',code);LS.set('staff',name);me=name;start(code);
+  });
+
+  async function start(code){
+    $('loginView').hidden=true;$('appView').hidden=false;render();
+    try{
+      if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);
+      await firebase.auth().signInAnonymously();
+    }catch(err){$('appView').hidden=true;$('loginView').hidden=false;$('lErr').textContent='接続できませんでした：'+err.message;return;}
+    const db=firebase.database(),root=db.ref('stores/'+storeKey(code));
+    ref=root.child('followup');
+    db.ref('.info/connected').on('value',s=>{const ok=!!s.val();$('conn').textContent=ok?'同期中':'オフライン';$('conn').classList.toggle('ok',ok);});
+    const onErr=err=>{loaded=true;showStatus('読み込めませんでした：'+err.message);render();};
+    root.child('config/casts').on('value',s=>{
+      casts=vals(s.val()).filter(c=>c&&c.id&&!String(c.id).startsWith('h_')&&c.active!==false&&c.name);
+      loaded=true;render();
+    },onErr);
+    ref.child('rows').on('value',s=>{data=s.val()||{};render();},onErr);
+    ref.child('staff').on('value',s=>{const v=vals(s.val());staff=v.length?v:DEFAULT_STAFF.slice();render();},onErr);
+  }
+
+  const saved=LS.get('code','');
+  if(saved&&normCode(saved).length>=8)start(saved);
+  else{$('loginView').hidden=false;$('lName').value=me||'';}
+})();
+</script>
+</body>
+</html>
